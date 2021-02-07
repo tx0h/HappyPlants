@@ -2,13 +2,13 @@
 #include <dht.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
-#include <WebServer.h>
-#include <ESPmDNS.h>
+#include <ESPAsyncWebServer.h>
 #include <stdio.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include <stdio.h>
 #include <time.h>
+
 
 dht DHT, DHT_OLD;
 int pumpRelay = 18;
@@ -36,10 +36,12 @@ float temperature[100];
 
 #define DHT22_PIN 5
 
-const char *ssid = "ssid";
-const char *password = "pass";
+struct {
+	char ssid[20];
+	char password[20];
+} wifiCredentials;
 
-WebServer server(80);
+AsyncWebServer server(80);
 
 const int led = 13;
 
@@ -73,6 +75,19 @@ void setup() {
 
 	Serial.println("===== File system info =====");
 	Serial.printf("total space: %d byte; used space: %d bytes\n", total, used);
+
+//	SPIFFS.remove("/wificred.dat");
+	if(SPIFFS.exists("/wificred.dat")) {
+		File f = SPIFFS.open("/wificred.dat", FILE_READ);
+		f.read((byte *)&wifiCredentials, sizeof(wifiCredentials));
+		f.close();
+	} else {
+		strcpy(wifiCredentials.ssid, "networkname");
+		strcpy(wifiCredentials.password, "password");
+		File f = SPIFFS.open("/wificred.dat", FILE_WRITE);
+		f.write((byte *)&wifiCredentials, sizeof(wifiCredentials));
+		f.close();
+	}
 
 	if(SPIFFS.exists("/lightctrl.dat")) {
 		File f = SPIFFS.open("/lightctrl.dat", FILE_READ);
@@ -133,8 +148,35 @@ label {
 	border-bottom-width: 1px;
 	border-color: #444;
 }
-	));
 
+label {
+  position: relative;
+}
+
+input[type="radio"] {
+  position: absolute;
+  clip: rect(0, 0, 0, 0);
+}
+
+input[type="radio"] + label::before {
+  content: '\a0';
+  display: inline-block;
+  margin: .2em .5em;
+  width: .6em;
+  height: .6em;
+  line-height: .55em;
+  border: 1px solid silver;
+}
+
+input[type="radio"] + label::before {
+  border-radius: 50%;
+}
+
+input[type="radio"]:checked + label::before {
+  content: '\a0';
+  background: aquamarine;
+}
+	));
 
 	snprintf(jsPart, 4096, STRINGIFY(
 		document.addEventListener("DOMContentLoaded", function(e) {
@@ -164,6 +206,7 @@ label {
 		);
 
 		function pumpInterval(event) {
+			console.log("pump interval value: "+this.value);
 			if(event.type) {
 				ajaxPost('/pumpRelay', {
 					"interval": this.value
@@ -173,6 +216,7 @@ label {
 			}
 		}
 		function pumpDuration(event) {
+			console.log("pump duration value: "+this.value);
 			if(event.type) {
 				ajaxPost('/pumpRelay', {
 					"duration": this.value
@@ -268,7 +312,7 @@ label {
 	);
 
 	WiFi.mode(WIFI_STA);
-	WiFi.begin(ssid, password);
+	WiFi.begin(wifiCredentials.ssid, wifiCredentials.password);
 	Serial.println("");
 
 	// Wait for connection
@@ -282,9 +326,6 @@ label {
 	getLocalTime(&local, 10000);
 faketime(&local);
 
-	if (MDNS.begin("esp32")) {
-		Serial.println("MDNS responder started");
-	}
 delay(2000);
 
 	server.on("/", handleRoot);
@@ -296,20 +337,20 @@ delay(2000);
 	server.on("/pumpRelay", handlePumpRelay);
 	server.on("/lightRelay", handleLightRelay);
 	server.on("/combined", handleCombined);
-	server.on("/esp-grow.js", []() {
+	server.on("/esp-grow.js", [](AsyncWebServerRequest *request) {
 		char msg[4096];
 		Serial.println("JS");
-		server.send(200, "application/javascript", jsPart);
+		request->send(200, "application/x-javascript", jsPart);
 	});
-	server.on("/esp-grow.css", []() {
+	server.on("/esp-grow.css", [](AsyncWebServerRequest *request) {
 		char msg[4096];
 		Serial.println("CSS");
-		server.send(200, "application/css", cssPart);
+		request->send(200, "text/css", cssPart);
 	});
-	server.on("/inline", []() {
-		server.send(200, "text/plain", "this works as well");
+	server.on("/inline", [](AsyncWebServerRequest *request) {
+		request->send(200, "text/plain", "this works as well");
 	});
-	server.onNotFound(handleNotFound);
+//	server.onNotFound(handleNotFound);
 	server.begin();
 	Serial.println("HTTP server started");
 
@@ -426,33 +467,33 @@ RETRY:
 		*/
 
 	}
-	server.handleClient();
+//	server.handleClient();
 }
 
-void handlePumpRelay() {
+void handlePumpRelay(AsyncWebServerRequest *request) {
 	char message[30];
-	switch(server.method()) {
+	switch(request->method()) {
 		case HTTP_GET:
 			snprintf(message, 30, "%d", pumpstate);
-			server.send(200, "text/plain", message);
+			request->send(200, "text/plain", message);
 			break;
 		case HTTP_POST:
 			snprintf(message, 30, "bla blubb");
-			if(server.hasArg("interval")) {
-				pumpControl.interval = (long)(server.arg("interval")).toInt();
-				//Serial.printf(">%d< %d\n", pumpControl.interval, pumpControl.duration);
-				server.send(200, "text/plain", message);
+			if(request->hasParam("interval", true)) {
+				pumpControl.interval = (long)(request->getParam("interval", true)->value()).toInt();
+				Serial.printf(">%d< %d\n", pumpControl.interval, pumpControl.duration);
+				request->send(200, "text/plain", message);
 			}
-			if(server.hasArg("duration")) {
-				pumpControl.duration = (long)(server.arg("duration")).toInt();
-				//Serial.printf("%d >%d<\n", pumpControl.interval, pumpControl.duration);
-				server.send(200, "text/plain", message);
+			if(request->hasParam("duration", true)) {
+				pumpControl.duration = (long)(request->getParam("duration", true)->value()).toInt();
+				Serial.printf("%d >%d<\n", pumpControl.interval, pumpControl.duration);
+				request->send(200, "text/plain", message);
 			}
 			updatePumpControl();
 			break;
 		default:
 			snprintf(message, 30, "not implemented");
-			server.send(400, "text/plain", message);
+			request->send(400, "text/plain", message);
 			break;
 	}
 }
@@ -481,80 +522,80 @@ void updatePumpControl() {
 	f.close();
 }
 
-void handleLightRelay() {
+void handleLightRelay(AsyncWebServerRequest *request) {
 	char message[30];
-	switch(server.method()) {
+	switch(request->method()) {
 		case HTTP_GET:
 			snprintf(message, 30, "%d", lightstate);
-			server.send(200, "text/plain", message);
+			request->send(200, "text/plain", message);
 			break;
 		case HTTP_POST:
 			snprintf(message, 30, "bla blubb");
-			if(server.hasArg("startTime")) {
-				Serial.print((server.arg("startTime")).toInt());
-				lightControl.startTime_l = (long)(server.arg("startTime")).toInt() / 1000;
+			if(request->hasParam("startTime", true)) {
+				Serial.print(request->getParam("startTime", true)->value().toInt());
+				lightControl.startTime_l = (long)request->getParam("startTime", true)->value().toInt() / 1000;
 				// Serial.printf("%d %s\n", lightControl.startTime_l, timeToString(lightControl.startTime_l));
-				server.send(200, "text/plain", message);
+				request->send(200, "text/plain", message);
 			}
-			if(server.hasArg("duration")) {
-				Serial.print((server.arg("duration")).toInt());
-				lightControl.duration_l = (long)(server.arg("duration")).toInt() / 1000;
+			if(request->hasParam("duration", true)) {
+				Serial.print(request->getParam("duration", true)->value().toInt());
+				lightControl.duration_l = (long)request->getParam("duration", true)->value().toInt() / 1000;
 				// Serial.printf("%d %s\n", lightControl.duration_l, timeToString(lightControl.duration_l));
-				server.send(200, "text/plain", message);
+				request->send(200, "text/plain", message);
 			}
 			updateLightControl();
 			break;
 		default:
 			snprintf(message, 30, "not implemented");
-			server.send(400, "text/plain", message);
+			request->send(400, "text/plain", message);
 			break;
 	}
 }
 
-void handleTemperature1() {
+void handleTemperature1(AsyncWebServerRequest *request) {
 	char message[30];
-	switch(server.method()) {
+	switch(request->method()) {
 		case HTTP_GET:
 			snprintf(message, 30, "%5.2f", DHT.temperature);
-			server.send(200, "text/plain", message);
+			request->send(200, "text/plain", message);
 			break;
 		default:
 			snprintf(message, 30, "not implemented");
-			server.send(400, "text/plain", message);
+			request->send(400, "text/plain", message);
 			break;
 	}
 }
 
-void handleHumidity() {
+void handleHumidity(AsyncWebServerRequest *request) {
 	char message[30];
-	switch(server.method()) {
+	switch(request->method()) {
 		case HTTP_GET:
 			snprintf(message, 30, "%5.2f", DHT.humidity);
-			server.send(200, "text/plain", message);
+			request->send(200, "text/plain", message);
 			break;
 		default:
 			snprintf(message, 30, "not implemented");
-			server.send(400, "text/plain", message);
+			request->send(400, "text/plain", message);
 			break;
 	}
 }
 
-void handleSignal() {
+void handleSignal(AsyncWebServerRequest *request) {
 	char message[30];
-	switch(server.method()) {
+	switch(request->method()) {
 		case HTTP_GET:
 			snprintf(message, 30, "%d", signal);
-			server.send(200, "text/plain", message);
+			request->send(200, "text/plain", message);
 			break;
 		default:
 			snprintf(message, 30, "not implemented");
-			server.send(400, "text/plain", message);
+			request->send(400, "text/plain", message);
 			break;
 	}
 }
 
-void handleTimeDate() {
-	switch(server.method()) {
+void handleTimeDate(AsyncWebServerRequest *request) {
+	switch(request->method()) {
 		case HTTP_GET:
 
 			struct tm tm;
@@ -564,12 +605,12 @@ faketime(&tm);
 			char timestr[32];
 
 			strftime(timestr, sizeof(timestr), "%F %T", &tm);
-			server.send(200, "text/plain", timestr);
+			request->send(200, "text/plain", timestr);
 			break;
 		default:
 			char message[30];
 			snprintf(message, 30, "not implemented");
-			server.send(400, "text/plain", message);
+			request->send(400, "text/plain", message);
 			break;
 	}
 }
@@ -584,8 +625,8 @@ void faketime(struct tm *tm) {
 		}
 	}
 }
-void handleCombined() {
-	switch(server.method()) {
+void handleCombined(AsyncWebServerRequest *request) {
+	switch(request->method()) {
 		case HTTP_GET:
 			struct tm tm;
 			DynamicJsonDocument val(256);
@@ -604,39 +645,39 @@ faketime(&tm);
 			val["lightstate"] = lightstate;
 			String output;
 			serializeJson(val, output);
-			server.send(200, "application/json", output);
+			request->send(200, "application/json", output);
 			break;
 		default:
 			char message[30];
 			snprintf(message, 30, "not implemented");
-			server.send(400, "text/plain", message);
+			request->send(400, "text/plain", message);
 			break;
 	}
 }
 
 
 
-void handleNotFound() {
+void handleNotFound(AsyncWebServerRequest *request) {
 	digitalWrite(led, 1);
 	String message = "File Not Found\n\n";
 	message += "URI: ";
-	message += server.uri();
+	message += request->url();
 	message += "\nMethod: ";
-	message += (server.method() == HTTP_GET) ? "GET" : "POST";
+	message += (request->method() == HTTP_GET) ? "GET" : "POST";
 	message += "\nArguments: ";
-	message += server.args();
+	message += request->args();
 	message += "\n";
 
-	for (uint8_t i = 0; i < server.args(); i++) {
-		message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+	for (uint8_t i = 0; i < request->args(); i++) {
+		message += " " + request->argName(i) + ": " + request->arg(i) + "\n";
 	}
 
-	server.send(404, "text/plain", message);
+	request->send(404, "text/plain", message);
 	digitalWrite(led, 0);
 }
 
 
-void drawGraph() {
+void drawGraph(AsyncWebServerRequest *request) {
 	String out = "";
 	char temp[100];
 	out += "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" width=\"400\" height=\"150\">\n";
@@ -650,10 +691,10 @@ void drawGraph() {
 	}
 	out += "</g>\n</svg>\n";
 
-	server.send(200, "image/svg+xml", out);
+	request->send(200, "image/svg+xml", out);
 }
 
-void handleRoot() {
+void handleRoot(AsyncWebServerRequest *request) {
 	digitalWrite(led, 1);
 	char message[4096];
 	struct tm local;
@@ -665,12 +706,12 @@ void handleRoot() {
 		STRINGIFY(<html>
 		<head>
 			<!-- <meta http-equiv='refresh' content='5'/> -->
-    		<title>ESP32 - Grow Center</title>
+    		<title>Happy Plants</title>
     		<link rel="stylesheet" href="/esp-grow.css">
 		</head>
 		<body>
 			<div id="header">
-			<span id="header">ESP32 - Grow Center</span>
+			<span id="header">Happy Plants</span>
 			<span class="right">
 				Signal strength: <span id="signal">%d</span>
 				&nbsp; &nbsp; &nbsp; &nbsp;
@@ -683,19 +724,19 @@ void handleRoot() {
 			<span id="elem">Pump relay: <span id="pumpRelay">%s</span></span>
 			<br>
 			<span id="elem">Interval (min):
-			<label>05:<input type="radio" name="interval" value="5"></label>
-			<label>10:<input type="radio" name="interval" value="10"></label>
-			<label>15:<input type="radio" name="interval" value="15"></label>
-			<label>20:<input type="radio" name="interval" value="20"></label>
-			<label>30:<input type="radio" name="interval" value="30"></label>
+			<input type="radio" name="interval" id="1" value="5"><label for="1">05</label>
+			<input type="radio" name="interval" id="2" value="10"><label for="2">10</label>
+			<input type="radio" name="interval" id="3" value="15"><label for="3">15</label>
+			<input type="radio" name="interval" id="4" value="20"><label for="4">20</label>
+			<input type="radio" name="interval" id="5" value="30"><label for="5">30</label>
 			</span>
 			<br>
 			<span id="elem">Duration (min):
-			<label>05:<input type="radio" name="duration" value="5"></label>
-			<label>10:<input type="radio" name="duration" value="10"></label>
-			<label>15:<input type="radio" name="duration" value="15"></label>
-			<label>20:<input type="radio" name="duration" value="20"></label>
-			<label>30:<input type="radio" name="duration" value="30"></label>
+			<input type="radio" name="duration" id="a" value="5"><label for="a">05</label>
+			<input type="radio" name="duration" id="b" value="10"><label for="b">10</label>
+			<input type="radio" name="duration" id="c" value="15"><label for="c">15</label>
+			<input type="radio" name="duration" id="d" value="20"><label for="d">20</label>
+			<input type="radio" name="duration" id="e" value="30"><label for="e">30</label>
 			</span>
 			<p>
 			<span id="elem">Light relay: <span id="lightRelay">%s</span></span>
@@ -728,7 +769,7 @@ void handleRoot() {
 		DHT.temperature,
 		DHT.humidity
 	);
-	server.send(200, "text/html", message);
+	request->send(200, "text/html", message);
 	digitalWrite(led, 0);
 }
 
