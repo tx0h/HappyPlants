@@ -42,6 +42,7 @@ struct {
 } wifiCredentials;
 
 AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
 
 const int led = 13;
 
@@ -50,8 +51,62 @@ const int led = 13;
 
 #define STRINGIFY(...) #__VA_ARGS__
 
-char cssPart[4096];
-char jsPart[4096];
+
+
+bool ledState = 0;
+void notifyClients() {
+	Serial.println("notify clients");
+	ws.textAll(String(ledState));
+}
+
+void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
+	AwsFrameInfo *info = (AwsFrameInfo*)arg;
+	Serial.println("handle web socket message");
+	if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+		data[len] = 0;
+		if (strcmp((char*)data, "toggle") == 0) {
+			ledState = !ledState;
+			notifyClients();
+		}
+	}
+}
+
+void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
+             void *arg, uint8_t *data, size_t len) {
+	Serial.println("on event");
+	switch (type) {
+		case WS_EVT_CONNECT:
+			Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+			break;
+		case WS_EVT_DISCONNECT:
+			Serial.printf("WebSocket client #%u disconnected\n", client->id());
+			break;
+		case WS_EVT_DATA:
+			handleWebSocketMessage(arg, data, len);
+			break;
+		case WS_EVT_PONG:
+		case WS_EVT_ERROR:
+			break;
+	}
+}
+
+void initWebSocket() {
+	ws.onEvent(onEvent);
+	server.addHandler(&ws);
+}
+
+String processor(const String& var){
+	Serial.println("processor");
+	Serial.println(var);
+	if(var == "STATE"){
+		if (ledState){
+			return("ON");
+		} else {
+			return("OFF");
+		}
+	}
+}
+
 
 void setup() {
 
@@ -111,205 +166,6 @@ void setup() {
 		updatePumpControl();
 	}
 
-	strcpy(cssPart, STRINGIFY(
-body {
-	background-color: #222;
-	font-family: Courier, Fixed;
-	Color: aquamarine;
-	font-size: large;
-}
-span.right {
-	float: right;
-	margin-top: -0px;
-}
-.time {
-	background-color: #222;
-	color: aquamarine;
-	border-color: #444;
-	border-style: solid;
-}
-span#header {
-	font-size: larger;
-}
-div#header {
-	border-bottom-style: solid;
-	border-bottom-width: 2px;
-	border-bottom-color: #444;
-}
-.chart {
-}
-u {
-	color: #f80;
-	font-weight: bold;
-	text-decoration: none;
-}
-label {
-	border-style: solid;
-	border-bottom-width: 1px;
-	border-color: #444;
-}
-
-label {
-  position: relative;
-}
-
-input[type="radio"] {
-  position: absolute;
-  clip: rect(0, 0, 0, 0);
-}
-
-input[type="radio"] + label::before {
-  content: '\a0';
-  display: inline-block;
-  margin: .2em .5em;
-  width: .6em;
-  height: .6em;
-  line-height: .55em;
-  border: 1px solid silver;
-}
-
-input[type="radio"] + label::before {
-  border-radius: 50%;
-}
-
-input[type="radio"]:checked + label::before {
-  content: '\a0';
-  background: aquamarine;
-}
-	));
-
-	snprintf(jsPart, 4096, STRINGIFY(
-		document.addEventListener("DOMContentLoaded", function(e) {
-
-		var starttime = document.getElementById('starttime');
-		starttime.addEventListener('focusout',
-			function(e) {
-				ajaxPost('/lightRelay', {
-					"startTime": this.valueAsNumber
-				},
-				function(data) {
-					console.log(data);
-				});
-			}
-		);
-
-		var duration = document.getElementById('duration');
-		duration.addEventListener('focusout',
-			function(e) {
-				ajaxPost('/lightRelay', {
-					"duration": this.valueAsNumber
-				},
-				function(data) {
-					console.log(data);
-				});
-			}
-		);
-
-		function pumpInterval(event) {
-			console.log("pump interval value: "+this.value);
-			if(event.type) {
-				ajaxPost('/pumpRelay', {
-					"interval": this.value
-				}, function(data) {
-					console.log(data);
-				});
-			}
-		}
-		function pumpDuration(event) {
-			console.log("pump duration value: "+this.value);
-			if(event.type) {
-				ajaxPost('/pumpRelay', {
-					"duration": this.value
-				}, function(data) {
-					console.log(data);
-				});
-			}
-		}
-		document.querySelectorAll("input[name='interval']").forEach((input) => {
-			if(input.value == %d) {
-				input.checked = true;
-			}
-			input.addEventListener('change', pumpInterval);
-		});
-		document.querySelectorAll("input[name='duration']").forEach((input) => {
-			if(input.value == %d) {
-				input.checked = true;
-			}
-			input.addEventListener('change', pumpDuration);
-		});
-
-		function ajaxCall(url, callback) {
-			var ajax;
-			ajax = new XMLHttpRequest();
-			ajax.onreadystatechange = function() {
-				if(ajax.readyState == 4 && ajax.status == 200) {
-					callback(ajax.responseText);
-       			}
-   			};
-			ajax.open("GET", url, true);
-   			ajax.send();
-		}
-
-		function ajaxPost(url, data, success) {
-			var params = typeof data == 'string'
-			? data
-			: Object.keys(data).map(
-				function(k) {
-					return(encodeURIComponent(k) + '=' + encodeURIComponent(data[k]))
-				}
-			).join('&');
-
-			var xhr = window.XMLHttpRequest
-			? new XMLHttpRequest()
-			: new ActiveXObject("Microsoft.XMLHTTP");
-
-			xhr.open('POST', url);
-			xhr.onreadystatechange = function() {
-				if (xhr.readyState>3 && xhr.status==200) {
-					success(xhr.responseText);
-				}
-			};
-			xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-			xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-			xhr.send(params);
-			return(xhr);
-		}
-
-		window.onload = function(e){
-			var smoothie = new SmoothieChart({
-			    millisPerPixel: 2000,
-   				grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
-			});
-			var smoothie2 = new SmoothieChart({
-				millisPerPixel: 2000,
-   				grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
-			});
-			smoothie.streamTo(document.getElementById("mycanvas"));
-			smoothie2.streamTo(document.getElementById("mycanvas2"));
-
-			var line1 = new TimeSeries();
-			var line2 = new TimeSeries();
-			setInterval(function() {
-				ajaxCall("/combined", (vals) => {
-					json = JSON.parse(vals);
-					document.getElementById('timedate').innerHTML = json.timedate;
-					document.getElementById('signal').innerHTML = json.signal;
-					document.getElementById('pumpRelay').innerHTML = json.pumpstate ? "<u>ON</u>" : "OFF";
-					document.getElementById('lightRelay').innerHTML = json.lightstate ? "<u>ON</u>" : "OFF";
-					line1.append(new Date().getTime(), json.temperature);
-					document.getElementById('temperature').innerHTML = json.temperature;
-					line2.append(new Date().getTime(), json.humidity);
-					document.getElementById('humidity').innerHTML = json.humidity;
-				})
-			}, 2000);
-
-			smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:3});
-			smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:3});
-		}
-
-		});
-	), pumpControl.interval, pumpControl.duration
-	);
 
 	WiFi.mode(WIFI_STA);
 	WiFi.begin(wifiCredentials.ssid, wifiCredentials.password);
@@ -334,21 +190,18 @@ input[type="radio"]:checked + label::before {
 	server.on("/pumpRelay", handlePumpRelay);
 	server.on("/lightRelay", handleLightRelay);
 	server.on("/combined", handleCombined);
-	server.on("/esp-grow.js", [](AsyncWebServerRequest *request) {
-		char msg[4096];
-		Serial.println("JS");
-		request->send(200, "application/x-javascript", jsPart);
+	server.on("/happyPlants.js", [](AsyncWebServerRequest *request) {
+		request->send(SPIFFS, "/happyPlants.js", "application/x-javascript");
 	});
-	server.on("/esp-grow.css", [](AsyncWebServerRequest *request) {
-		char msg[4096];
-		Serial.println("CSS");
-		request->send(200, "text/css", cssPart);
+	server.on("/happyPlants.css", HTTP_GET, [](AsyncWebServerRequest *request){
+		request->send(SPIFFS, "/happyPlants.css", "text/css");
 	});
 	server.on("/inline", [](AsyncWebServerRequest *request) {
 		request->send(200, "text/plain", "this works as well");
 	});
 //	server.onNotFound(handleNotFound);
 	server.begin();
+	initWebSocket();
 
 	Serial.println("HTTP server started");
 
@@ -462,7 +315,7 @@ RETRY:
 		Serial.printf("DATE NOW: H=%d M=%d S=%d\n", tm.tm_hour, tm.tm_min , tm.tm_sec);
 		Serial.printf("SEC OF DAY: %d\n", tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec);
 		*/
-
+		update();
 	}
 //	server.handleClient();
 }
@@ -609,6 +462,25 @@ void handleTimeDate(AsyncWebServerRequest *request) {
 	}
 }
 
+void update() {
+	struct tm tm;
+	DynamicJsonDocument val(256);
+	getLocalTime(&tm, 10000);
+	char timestr[32];
+
+	strftime(timestr, sizeof(timestr), "%F %T", &tm);
+
+	val["timedate"] = timestr;
+	val["signal"] = signal;
+	val["humidity"] = DHT.humidity;
+	val["temperature"] = DHT.temperature;
+	val["pumpstate"] = pumpstate;
+	val["lightstate"] = lightstate;
+	String output;
+	serializeJson(val, output);
+	ws.textAll(output);
+}
+
 void handleCombined(AsyncWebServerRequest *request) {
 	switch(request->method()) {
 		case HTTP_GET:
@@ -628,6 +500,7 @@ void handleCombined(AsyncWebServerRequest *request) {
 			String output;
 			serializeJson(val, output);
 			request->send(200, "application/json", output);
+			ws.textAll(output);
 			break;
 		default:
 			char message[30];
@@ -689,12 +562,13 @@ void handleRoot(AsyncWebServerRequest *request) {
 		<head>
 			<!-- <meta http-equiv='refresh' content='5'/> -->
     		<title>Happy Plants</title>
-    		<link rel="stylesheet" href="/esp-grow.css">
+    		<link rel="stylesheet" href="/happyPlants.css">
 		</head>
 		<body>
 			<div id="header">
 			<span id="header">Happy Plants</span>
 			<span class="right">
+				<input type="button" id="trigger" value="T">
 				Signal strength: <span id="signal">%d</span>
 				&nbsp; &nbsp; &nbsp; &nbsp;
 				<span id="timedate">%s</span></span>
@@ -737,8 +611,65 @@ void handleRoot(AsyncWebServerRequest *request) {
 			<canvas class="chart" id="mycanvas2" width="400" height="100"></canvas>
 			</span>
 			</div>
+			<script>
+				externalPumpInterval=%d;
+				externalPumpDuration=%d;
+				/*
+				var gateway = "ws://" + window.location.hostname + "/ws";
+				var websocket;
+				function initWebSocket() {
+					console.log('Trying to open a WebSocket connection...');
+					websocket = new WebSocket(gateway);
+					websocket.onopen    = onOpen;
+					websocket.onclose   = onClose;
+					websocket.onmessage = onMessage; // <-- add this line
+				}
+
+				function onOpen(event) {
+					console.log('Connection opened');
+				}
+
+				function onClose(event) {
+					console.log('Connection closed');
+					setTimeout(initWebSocket, 2000);
+				}
+
+				function initButton() {
+					document.getElementById('trigger').addEventListener('click', toggle);
+				}
+
+				function toggle(){
+					websocket.send('toggle');
+				}
+				window.addEventListener('load', onLoad);
+				function onLoad(event) {
+					initWebSocket();
+					initButton();
+				}
+				*/
+				var smoothie;
+				var smoothie2;
+				var line1;
+				var line2;
+				function onMessage(event) {
+					if(event.type == "message") {
+						json = JSON.parse(event.data);
+						document.getElementById('timedate').innerHTML = json.timedate;
+						document.getElementById('signal').innerHTML = json.signal;
+						document.getElementById('pumpRelay').innerHTML = json.pumpstate ? "<u>ON</u>" : "OFF";
+						document.getElementById('lightRelay').innerHTML = json.lightstate ? "<u>ON</u>" : "OFF";
+						line1.append(new Date().getTime(), json.temperature);
+						document.getElementById('temperature').innerHTML = json.temperature;
+						line2.append(new Date().getTime(), json.humidity);
+						document.getElementById('humidity').innerHTML = json.humidity;
+						// console.log(event.data);
+					}
+					smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:3});
+					smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:3});
+				}
+			</script>
 		</body>
-		<script src="/esp-grow.js"></script>
+		<script src="/happyPlants.js"></script>
 		<script src="https://cdn.jsdelivr.net/timepicker.js/latest/timepicker.min.js"></script>
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/smoothie/1.34.0/smoothie.min.js"></script>
 		</html>),
@@ -749,7 +680,10 @@ void handleRoot(AsyncWebServerRequest *request) {
 		lightControl.startTime_s,
 		lightControl.duration_s,
 		DHT.temperature,
-		DHT.humidity
+		DHT.humidity,
+		pumpControl.interval,
+		pumpControl.duration
+
 	);
 	request->send(200, "text/html", message);
 	digitalWrite(led, 0);

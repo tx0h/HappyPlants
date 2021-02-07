@@ -1,0 +1,64 @@
+body {
+	background-color: #222;
+	font-family: Courier, Fixed;
+	Color: aquamarine;
+	font-size: large;
+}
+span.right {
+	float: right;
+	margin-top: -0px;
+}
+.time {
+	background-color: #222;
+	color: aquamarine;
+	border-color: #444;
+	border-style: solid;
+}
+span#header {
+	font-size: larger;
+}
+div#header {
+	border-bottom-style: solid;
+	border-bottom-width: 2px;
+	border-bottom-color: #444;
+}
+.chart {
+}
+u {
+	color: #f80;
+	font-weight: bold;
+	text-decoration: none;
+}
+label {
+	border-style: solid;
+	border-bottom-width: 1px;
+	border-color: #444;
+}
+
+label {
+  position: relative;
+}
+
+input[type="radio"] {
+  position: absolute;
+  clip: rect(0, 0, 0, 0);
+}
+
+input[type="radio"] + label::before {
+  content: '\a0';
+  display: inline-block;
+  margin: .2em .5em;
+  width: .6em;
+  height: .6em;
+  line-height: .55em;
+  border: 1px solid silver;
+}
+
+input[type="radio"] + label::before {
+  border-radius: 50%;
+}
+
+input[type="radio"]:checked + label::before {
+  content: '\a0';
+  background: aquamarine;
+}
