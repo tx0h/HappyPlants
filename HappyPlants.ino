@@ -324,9 +324,6 @@ input[type="radio"]:checked + label::before {
 	// ESP32 Systemzeit mit NTP Synchronisieren
 	configTzTime(TZ_INFO, NTP_SERVER);
 	getLocalTime(&local, 10000);
-faketime(&local);
-
-delay(2000);
 
 	server.on("/", handleRoot);
 	server.on("/test.svg", drawGraph);
@@ -352,6 +349,7 @@ delay(2000);
 	});
 //	server.onNotFound(handleNotFound);
 	server.begin();
+
 	Serial.println("HTTP server started");
 
 	pinMode(pumpRelay, OUTPUT);
@@ -376,7 +374,6 @@ void loop() {
 
 	if(millis() % 1000 == 0) {
 		getLocalTime(&tm);
-faketime(&tm);
 		long now = (tm.tm_hour * 60 + tm.tm_min) * 60;
 
 		if(tm.tm_min % pumpControl.interval == 0
@@ -502,7 +499,6 @@ char *timeToString(long t) {
 	char *ret = (char *)malloc(6);
 	struct tm *tm;
 	tm = gmtime(&t);
-//faketime(tm);
 	sprintf(ret, "%02d:%02d", tm->tm_hour, tm->tm_min);
 	return(ret);
 }
@@ -600,8 +596,6 @@ void handleTimeDate(AsyncWebServerRequest *request) {
 
 			struct tm tm;
 			getLocalTime(&tm, 10000);
-faketime(&tm);
-
 			char timestr[32];
 
 			strftime(timestr, sizeof(timestr), "%F %T", &tm);
@@ -615,24 +609,12 @@ faketime(&tm);
 	}
 }
 
-void faketime(struct tm *tm) {
-	tm->tm_hour = 23;
-	if(tm->tm_min < 55 && tm->tm_min > 5) {
-		tm->tm_min = 55 + (tm->tm_min % 10);
-		if(tm->tm_min >=60) {
-			tm->tm_hour = 0;
-			tm->tm_min = tm->tm_min % 60;
-		}
-	}
-}
 void handleCombined(AsyncWebServerRequest *request) {
 	switch(request->method()) {
 		case HTTP_GET:
 			struct tm tm;
 			DynamicJsonDocument val(256);
 			getLocalTime(&tm, 10000);
-faketime(&tm);
-
 			char timestr[32];
 
 			strftime(timestr, sizeof(timestr), "%F %T", &tm);
