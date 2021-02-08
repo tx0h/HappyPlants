@@ -14,7 +14,7 @@ The timing intervals are easy to setup via the web interface, which looks like t
 The setup:
 
 Happy plants use a ESP32 Devkit 1 module. A DHT22 and a module with two relays are attached to the ESP32.
-The ESP32AsyncWebserver with the underlying AsyncTCP provide the web server environment. Some files are
+The ESPAsyncWebServer with the underlying AsyncTCP provide the web server environment. Some files are
 stored on the ESP32 SPIFFS. The essential files are in the static/ folder in the repository (happyPlant.css
 and happyPlant.js). Some other files get created during runtime. The updates of the current sensors and
 switch states are streamed to the clients via websocket.
