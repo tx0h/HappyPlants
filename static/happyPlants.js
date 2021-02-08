@@ -93,21 +93,36 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		xhr.send(params);
 		return(xhr);
 	}
+		function onMessage(event) {
+			if(event.type == "message") {
+				json = JSON.parse(event.data);
+				document.getElementById('timedate').innerHTML = json.timedate;
+				document.getElementById('signal').innerHTML = json.signal;
+				document.getElementById('pumpRelay').innerHTML = json.pumpstate ? "<u>ON</u>" : "OFF";
+				document.getElementById('lightRelay').innerHTML = json.lightstate ? "<u>ON</u>" : "OFF";
+				line1.append(new Date().getTime(), json.temperature);
+				document.getElementById('temperature').innerHTML = json.temperature;
+				line2.append(new Date().getTime(), json.humidity);
+				document.getElementById('humidity').innerHTML = json.humidity;
+						// console.log(event.data);
+			}
+		}
 
-	window.onload = function(e){
-		smoothie = new SmoothieChart({
+		var smoothie = new SmoothieChart({
 		    millisPerPixel: 2000,
 			grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
 		});
-		smoothie2 = new SmoothieChart({
+		var smoothie2 = new SmoothieChart({
 			millisPerPixel: 2000,
 			grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
 		});
 		smoothie.streamTo(document.getElementById("mycanvas"));
 		smoothie2.streamTo(document.getElementById("mycanvas2"));
+		var line1 = new TimeSeries();
+		var line2 = new TimeSeries();
+		smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:3});
+		smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:3});
 
-		line1 = new TimeSeries();
-		line2 = new TimeSeries();
 		/*
 		var line1 = new TimeSeries();
 		var line2 = new TimeSeries();
@@ -128,7 +143,6 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:3});
 		smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:3});
 		*/
-	}
 	
 	var gateway = "ws://" + window.location.hostname + "/ws";
 	var websocket;

@@ -107,6 +107,23 @@ String processor(const String& var){
 	}
 }
 
+void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+	if(!index) {
+		Serial.println("UploadStart: " + filename);
+		// open the file on first call and store the file handle in the request object
+		request->_tempFile = SPIFFS.open("/"+filename, "w");
+	}
+	if(len) {
+		// stream the incoming chunk to the opened file
+		request->_tempFile.write(data,len);
+	}
+	if(final) {
+		Serial.println("UploadEnd: " + filename + ",size: " + index+len);
+		// close the file handle as the upload is now done
+		request->_tempFile.close();
+		request->redirect("/files");
+	}
+}
 
 void setup() {
 
@@ -137,8 +154,8 @@ void setup() {
 		f.read((byte *)&wifiCredentials, sizeof(wifiCredentials));
 		f.close();
 	} else {
-		strcpy(wifiCredentials.ssid, "networkname");
-		strcpy(wifiCredentials.password, "password");
+		strcpy(wifiCredentials.ssid, "essid");
+		strcpy(wifiCredentials.password, "pass");
 		File f = SPIFFS.open("/wificred.dat", FILE_WRITE);
 		f.write((byte *)&wifiCredentials, sizeof(wifiCredentials));
 		f.close();
@@ -193,12 +210,16 @@ void setup() {
 	server.on("/happyPlants.js", [](AsyncWebServerRequest *request) {
 		request->send(SPIFFS, "/happyPlants.js", "application/x-javascript");
 	});
-	server.on("/happyPlants.css", HTTP_GET, [](AsyncWebServerRequest *request){
+	server.on("/happyPlants.css", HTTP_GET, [](AsyncWebServerRequest *request) {
 		request->send(SPIFFS, "/happyPlants.css", "text/css");
 	});
 	server.on("/inline", [](AsyncWebServerRequest *request) {
 		request->send(200, "text/plain", "this works as well");
 	});
+
+	//server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request), handleUpload);
+	server.onFileUpload(handleUpload);
+
 //	server.onNotFound(handleNotFound);
 	server.begin();
 	initWebSocket();
@@ -647,6 +668,8 @@ void handleRoot(AsyncWebServerRequest *request) {
 					initButton();
 				}
 				*/
+
+				/*
 				var smoothie;
 				var smoothie2;
 				var line1;
@@ -667,6 +690,7 @@ void handleRoot(AsyncWebServerRequest *request) {
 					smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:3});
 					smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:3});
 				}
+				*/
 			</script>
 		</body>
 		<script src="/happyPlants.js"></script>
