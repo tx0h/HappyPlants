@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <dht.h>
+#include <dhtnew.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <ESPAsyncWebServer.h>
@@ -12,7 +12,7 @@
 
 // temperature/humidity sensor pin, vars
 #define DHT22_PIN 5
-dht DHT, DHT_OLD;
+DHTNEW DHT(5);
 
 // pump relay pin, state, struct
 #define PUMPRELAY_PIN 18
@@ -522,29 +522,35 @@ void setup() {
 
 	pinMode(LED_PIN, OUTPUT);
 	digitalWrite(LED_PIN, ledState = 0);
+
+	pinMode(PUMPRELAY_PIN, OUTPUT);
+	digitalWrite(PUMPRELAY_PIN, HIGH);
+
+	pinMode(LIGHTRELAY_PIN, OUTPUT);
+	digitalWrite(LIGHTRELAY_PIN, HIGH);
+
+
 	Serial.begin(115200);
 	Serial.println("*** OK.");
+//	Serial.println(DHT_LIB_VERSION);
 
-	delay(500);
+	delay(5000);
 
 
 //	server.onNotFound(handleNotFound);
 	Serial.println("Start SPIFFS");
 	startSPIFFS();
+	delay(5000);
 	Serial.println("Start WiFi");
 	startWiFi();
+	delay(5000);
 	Serial.println("Start WebServer");
 	startWebServer();
+	delay(5000);
 	Serial.println("Start WebSocket");
 	startWebSocket();
+	delay(5000);
 
-
-	pinMode(PUMPRELAY_PIN, OUTPUT);
-	digitalWrite(PUMPRELAY_PIN, HIGH);
-	pinMode(LIGHTRELAY_PIN, OUTPUT);
-	digitalWrite(LIGHTRELAY_PIN, HIGH);
-	Serial.begin(115200);
-	Serial.println(DHT_LIB_VERSION);
 
 	if((local.tm_hour * 3600 + local.tm_min * 60) > lightControl.startTime_l
 	&& (local.tm_hour * 3600 + local.tm_min * 60) < lightControl.startTime_l + lightControl.duration_l) {
@@ -609,12 +615,14 @@ void loop() {
 		*/
 	}
 
-	// read sensors
+	// every second second, read sensors, inform the clients
 	if(millis() % 2000 == 0) {
+
 		wifiSignal = WiFi.RSSI();
-		DHT_OLD = DHT;
+
 RETRY:
-		int chk = DHT.read22(DHT22_PIN);
+		//int chk = DHT.read22(DHT22_PIN);
+		int chk = DHT.read();
 		switch (chk) {
 			case DHTLIB_OK:
 				//Serial.print("OK,\t");
@@ -622,21 +630,17 @@ RETRY:
 					goto RETRY;
 				break;
 			case DHTLIB_ERROR_CHECKSUM:
-				DHT = DHT_OLD;
 				goto RETRY;
 				break;
 			case DHTLIB_ERROR_TIMEOUT:
-				DHT = DHT_OLD;
 				goto RETRY;
 				break;
 			default:
-				DHT = DHT_OLD;
 				goto RETRY;
-				Serial.print("Unknown error\n");
 				break;
 		}
 
+		// update the websocket clients
 		update_ws();
 	}
-//	server.handleClient();
 }

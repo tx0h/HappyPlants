@@ -140,8 +140,8 @@ document.addEventListener("DOMContentLoaded", function(e) {
 	smoothie2.streamTo(document.getElementById("mycanvas2"));
 	var line1 = new TimeSeries();
 	var line2 = new TimeSeries();
-	smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:3});
-	smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:3});
+	smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:1});
+	smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:1});
 
 	
 	var gateway = "ws://" + window.location.hostname + "/ws";
