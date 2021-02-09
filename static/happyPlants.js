@@ -93,56 +93,56 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		xhr.send(params);
 		return(xhr);
 	}
-		function onMessage(event) {
-			if(event.type == "message") {
-				json = JSON.parse(event.data);
+
+	function onMessage(event) {
+		if(event.type == "message") {
+			json = JSON.parse(event.data);
+			if(json.type == "update") {
 				document.getElementById('timedate').innerHTML = json.timedate;
-				document.getElementById('signal').innerHTML = json.signal;
+				document.getElementById('wifiSignal').innerHTML = json.wifiSignal;
 				document.getElementById('pumpRelay').innerHTML = json.pumpstate ? "<u>ON</u>" : "OFF";
 				document.getElementById('lightRelay').innerHTML = json.lightstate ? "<u>ON</u>" : "OFF";
 				line1.append(new Date().getTime(), json.temperature);
 				document.getElementById('temperature').innerHTML = json.temperature;
 				line2.append(new Date().getTime(), json.humidity);
 				document.getElementById('humidity').innerHTML = json.humidity;
-						// console.log(event.data);
 			}
+
+			if(json.type == "updatePump") {
+				document.querySelectorAll("input[name='interval']").forEach((input) => {
+					if(input.value == json.pumpinterval) {
+						input.checked = true;
+					}
+				});
+				document.querySelectorAll("input[name='duration']").forEach((input) => {
+					if(input.value == json.pumpduration) {
+						input.checked = true;
+					}
+				});
+			}
+			if(json.type == "updateLight") {
+				document.getElementById('starttime').value = json.lightstart;
+				document.getElementById('duration').value = json.lightduration;
+			}
+			console.log(event.data);
 		}
+	}
 
-		var smoothie = new SmoothieChart({
-		    millisPerPixel: 2000,
-			grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
-		});
-		var smoothie2 = new SmoothieChart({
-			millisPerPixel: 2000,
-			grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
-		});
-		smoothie.streamTo(document.getElementById("mycanvas"));
-		smoothie2.streamTo(document.getElementById("mycanvas2"));
-		var line1 = new TimeSeries();
-		var line2 = new TimeSeries();
-		smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:3});
-		smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:3});
+	var smoothie = new SmoothieChart({
+	    millisPerPixel: 2000,
+		grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
+	});
+	var smoothie2 = new SmoothieChart({
+		millisPerPixel: 2000,
+		grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
+	});
+	smoothie.streamTo(document.getElementById("mycanvas"));
+	smoothie2.streamTo(document.getElementById("mycanvas2"));
+	var line1 = new TimeSeries();
+	var line2 = new TimeSeries();
+	smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:3});
+	smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:3});
 
-		/*
-		var line1 = new TimeSeries();
-		var line2 = new TimeSeries();
-		setInterval(function() {
-			ajaxCall("/combined", (vals) => {
-				json = JSON.parse(vals);
-				document.getElementById('timedate').innerHTML = json.timedate;
-				document.getElementById('signal').innerHTML = json.signal;
-				document.getElementById('pumpRelay').innerHTML = json.pumpstate ? "<u>ON</u>" : "OFF";
-				document.getElementById('lightRelay').innerHTML = json.lightstate ? "<u>ON</u>" : "OFF";
-				line1.append(new Date().getTime(), json.temperature);
-				document.getElementById('temperature').innerHTML = json.temperature;
-				line2.append(new Date().getTime(), json.humidity);
-				document.getElementById('humidity').innerHTML = json.humidity;
-			})
-		}, 2000);
-
-		smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:3});
-		smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:3});
-		*/
 	
 	var gateway = "ws://" + window.location.hostname + "/ws";
 	var websocket;
@@ -155,7 +155,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 	}
 
 	function onOpen(event) {
-		console.log('Connection opened');
+		console.log('...connected.');
 	}
 
 	function onClose(event) {
@@ -166,15 +166,23 @@ document.addEventListener("DOMContentLoaded", function(e) {
 	window.addEventListener('load', onLoad);
 	function onLoad(event) {
 		initWebSocket();
-		initButton();
+		toggleButton();
+		resetButton();
 	}
 
-	function initButton() {
-		document.getElementById('trigger').addEventListener('click', toggle);
+	function toggleButton() {
+		document.getElementById('toggle').addEventListener('click', toggle);
 	}
-
 	function toggle(){
 		websocket.send('toggle');
 	}
+
+	function resetButton() {
+		document.getElementById('reset').addEventListener('click', reset);
+	}
+	function reset(){
+		websocket.send('reset');
+	}
+
 
 });
