@@ -33,4 +33,4 @@ curl -F 'file=@/PATH_TO/static/happyPlants.js' http://IP_ADDR_OF_THE_ESP32/uploa
 curl -F 'file=@/PATH_TO/static/happyPlants.css' http://IP_ADDR_OF_THE_ESP32/upload
 ```
 
-Have phun.
+thanks for your engagement & have phun.
