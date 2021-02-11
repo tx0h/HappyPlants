@@ -13,6 +13,9 @@
 // temperature/humidity sensor pin, vars
 #define DHT22_PIN 5
 DHTNEW DHT(5);
+int bufcnt;
+float temperature_buf[20];
+float humidity_buf[20];
 
 // pump relay pin, state, struct
 #define PUMPRELAY_PIN 18
@@ -510,7 +513,7 @@ void startWiFi() {
 
 	// Wait for connection
 	while (WiFi.status() != WL_CONNECTED) {
-		delay(500);
+		delay(200);
 	}
 
 	// ESP32 Systemzeit mit NTP Synchronisieren
@@ -520,6 +523,12 @@ void startWiFi() {
 
 void setup() {
 
+	DHT.read();
+	bufcnt=0;
+	for(int i=0; i<=19; i++) {
+		temperature_buf[i] = DHT.temperature;
+		humidity_buf[i] = DHT.humidity;
+	}
 	pinMode(LED_PIN, OUTPUT);
 	digitalWrite(LED_PIN, ledState = 0);
 
@@ -534,22 +543,22 @@ void setup() {
 	Serial.println("*** OK.");
 //	Serial.println(DHT_LIB_VERSION);
 
-	delay(5000);
+	delay(200);
 
 
 //	server.onNotFound(handleNotFound);
 	Serial.println("Start SPIFFS");
 	startSPIFFS();
-	delay(5000);
+	delay(200);
 	Serial.println("Start WiFi");
 	startWiFi();
-	delay(5000);
+	delay(200);
 	Serial.println("Start WebServer");
 	startWebServer();
-	delay(5000);
+	delay(200);
 	Serial.println("Start WebSocket");
 	startWebSocket();
-	delay(5000);
+	delay(200);
 
 
 	if((local.tm_hour * 3600 + local.tm_min * 60) > lightControl.startTime_l
@@ -599,9 +608,10 @@ void loop() {
 		}
 
 //Serial.printf("now: %d, startTime %d duration %d\n", now, lightControl.startTime_l, lightControl.duration_l);
-		if(now == ((lightControl.startTime_l + lightControl.duration_l > 86400)
+		if(((now == ((lightControl.startTime_l + lightControl.duration_l > 86400)
 		? (lightControl.duration_l + lightControl.startTime_l) % 86400
-		: lightControl.startTime_l + lightControl.duration_l)
+		: lightControl.startTime_l + lightControl.duration_l))
+		|| (now == 0 && lightControl.startTime_l + lightControl.duration_l == 86400))
 		&& tm.tm_min != lastlight) {
 			lastlight = tm.tm_min;
 			lightstate = 0;
@@ -623,6 +633,8 @@ void loop() {
 RETRY:
 		//int chk = DHT.read22(DHT22_PIN);
 		int chk = DHT.read();
+		float temperature = 0;
+		float humidity = 0;
 		switch (chk) {
 			case DHTLIB_OK:
 				//Serial.print("OK,\t");
@@ -639,8 +651,20 @@ RETRY:
 				goto RETRY;
 				break;
 		}
+		temperature_buf[bufcnt] = DHT.temperature;
+		humidity_buf[bufcnt] = DHT.humidity;
+		if(++bufcnt >= 20) {
+			bufcnt = 0;
+		}
+		for(int i = 0; i <= 19; i++) {
+			temperature += temperature_buf[i];
+			humidity += humidity_buf[i];
+		}
+		DHT.temperature = temperature / 20;
+		DHT.humidity = humidity / 20;
 
 		// update the websocket clients
+		//Serial.printf("Memory: %.2f/%.2f\n", ESP.getFreeHeap() / 1024.0, ESP.getHeapSize() / 1024.0);
 		update_ws();
 	}
 }

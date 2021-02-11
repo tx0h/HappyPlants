@@ -124,7 +124,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 				document.getElementById('starttime').value = json.lightstart;
 				document.getElementById('duration').value = json.lightduration;
 			}
-			console.log(event.data);
+			//console.log(event.data);
 		}
 	}
 
@@ -151,7 +151,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		websocket = new WebSocket(gateway);
 		websocket.onopen = onOpen;
 		websocket.onclose = onClose;
-		websocket.onmessage = onMessage; // <-- add this line
+		websocket.onmessage = onMessage;
 	}
 
 	function onOpen(event) {
