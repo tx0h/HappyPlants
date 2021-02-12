@@ -629,6 +629,7 @@ void loop() {
 	if(millis() % 2000 == 0) {
 
 		wifiSignal = WiFi.RSSI();
+		int retry = 5;
 
 RETRY:
 		//int chk = DHT.read22(DHT22_PIN);
@@ -638,17 +639,20 @@ RETRY:
 		switch (chk) {
 			case DHTLIB_OK:
 				//Serial.print("OK,\t");
-				if(DHT.humidity > 1000)
+				if(DHT.humidity > 1000 && --retry)
 					goto RETRY;
 				break;
 			case DHTLIB_ERROR_CHECKSUM:
-				goto RETRY;
+				if(--retry)
+					goto RETRY;
 				break;
 			case DHTLIB_ERROR_TIMEOUT:
-				goto RETRY;
+				if(--retry)
+					goto RETRY;
 				break;
 			default:
-				goto RETRY;
+				if(--retry)
+					goto RETRY;
 				break;
 		}
 		temperature_buf[bufcnt] = DHT.temperature;
@@ -664,7 +668,7 @@ RETRY:
 		DHT.humidity = humidity / 20;
 
 		// update the websocket clients
-		//Serial.printf("Memory: %.2f/%.2f\n", ESP.getFreeHeap() / 1024.0, ESP.getHeapSize() / 1024.0);
+//		Serial.printf("Memory: %.2f/%.2f\n", ESP.getFreeHeap() / 1024.0, ESP.getHeapSize() / 1024.0);
 		update_ws();
 	}
 }

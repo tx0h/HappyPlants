@@ -124,7 +124,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 				document.getElementById('starttime').value = json.lightstart;
 				document.getElementById('duration').value = json.lightduration;
 			}
-			//console.log(event.data);
+			console.log(event.data);
 		}
 	}
 
