@@ -1,5 +1,128 @@
 document.addEventListener("DOMContentLoaded", function(e) {
 
+	var nutritionScheme = `
+		<br>
+		<br>
+		Nutrition scheme:
+		<br>
+		<table>
+		<tr>
+			<th>Description</th>
+			<th>Weeks</span>
+			<th>Light<br>hours</th>
+			<th>Aqua<br>Vega<br>A & B</th>
+			<th>Aqua<br>Flores<br>A & B</th>
+			<th>Rhizo<br>tonic</th>
+			<th>Cana<br>zym</th>
+			<th>PK13/14</th>
+			<th>Canna<br>boost</th>
+			<th>EC+</span>
+			<th>EC Total</th>
+		</tr>
+
+		<tr class="schemerow" id="1">
+			<td id='desc'>Start / rooting (3-5 days)<br>Wetten the substrate</td>
+			<td>~1</td>
+			<td>18</td>
+			<td>1.8</td>
+			<td>-</td>
+			<td>4</td>
+			<td>-</td>
+			<td>-</td>
+			<td>-</td>
+			<td>0.9</td>
+			<td>1.3</td>
+		</tr>
+
+		<tr class="schemerow" id="2">
+			<td id='desc'>Vegetative Phase I<br>Plant developse in Volume</td>
+			<td>1-3</td>
+			<td>18</td>
+			<td>2.2</td>
+			<td>-</td>
+			<td>2</td>
+			<td>2.5</td>
+			<td>-</td>
+			<td>-</td>
+			<td>1.1</td>
+			<td>1.5</td>
+		</tr>
+
+		<tr class="schemerow" id="3">
+			<td id='desc'>Vegetative phase II<br>Up to growth stagnation<br>start of fructification<br>or blooming</td>
+			<td>2-4</td>
+			<td>12</td>
+			<td>2.8</td>
+			<td>-</td>
+			<td>2</td>
+			<td>2.5</td>
+			<td>-</td>
+			<td>3</td>
+			<td>1.4</td>
+			<td>1.8</td>
+		</tr>
+
+		<tr><td><br></td></tr>
+
+		<tr class="schemerow" id="4">
+			<td id='desc'>Generative period I<br>Flowers or fuits develope in<br>size. Growth in height achieved</td>
+			<td>2-3</td>
+			<td>12</td>
+			<td>-</td>
+			<td>3.4</td>
+			<td>0.5</td>
+			<td>2.5</td>
+			<td>-</td>
+			<td>3</td>
+			<td>1.6</td>
+			<td>2</td>
+		</tr>
+
+		<tr class="schemerow" id="5">
+			<td id='desc'>Generative period II<br>Develope mass (weight) of<br>flowers or fruits</td>
+			<td>1</td>
+			<td>12</td>
+			<td>-</td>
+			<td>3.4</td>
+			<td>0.5</td>
+			<td>2.5</td>
+			<td>1.5</td>
+			<td>3</td>
+			<td>1.8</td>
+			<td>2.2</td>
+		</tr>
+
+		<tr class="schemerow" id="6">
+			<td id='desc'>Generative period III<br>Develope mass (weight) of<br>flowers or fruits</td>
+			<td>2-3</td>
+			<td>12</td>
+			<td>-</td>
+			<td>2.5</td>
+			<td>0.5</td>
+			<td>2.5</td>
+			<td>-</td>
+			<td>3</td>
+			<td>1.2</td>
+			<td>1.6</td>
+		</tr>
+
+		<tr class="schemerow" id="7">
+			<td id='desc'>Generative period IV<br>Flower or fruit ripening process</td>
+			<td>1-2</td>
+			<td>10</td>
+			<td>-</td>
+			<td>-</td>
+			<td>-</td>
+			<td>3.5</td>
+			<td>-</td>
+			<td>3</td>
+			<td>-</td>
+			<td>0.4</td>
+		</tr>
+
+
+		</table>
+	`;
 	var starttime = document.getElementById('starttime');
 	starttime.addEventListener('focusout',
 		function(e) {
@@ -56,6 +179,21 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		}
 		input.addEventListener('change', pumpDuration);
 	});
+	
+	function cycleAsText(totalDays) {
+	    weeks = parseInt(totalDays / 7);
+	    days = weeks - (parseInt(weeks / 7) * 7);
+
+		if(!weeks) {
+			return(`${totalDays} days ${nutritionScheme}`);
+		} else {
+			if(!days) {
+				return(`${totalDays} days or ${weeks} weeks ${nutritionScheme}`);
+			} else {
+				return(`${totalDays} days or ${weeks} weeks and ${days} days ${nutritionScheme}`);
+			}
+		}
+	}
 
 	function ajaxCall(url, callback) {
 		var ajax;
@@ -108,6 +246,24 @@ document.addEventListener("DOMContentLoaded", function(e) {
 				document.getElementById('humidity').innerHTML = json.humidity;
 			}
 
+			if(json.type == "updateScheme") {
+				var liter = 20;
+				document.getElementById('cyclelen').innerHTML = cycleAsText(json.cycleLength);
+				document.querySelectorAll("tr[class='schemerow']").forEach((tr) => {
+					for(var i=3; i <= 8; i++) {
+						if(tr.cells[i].innerHTML != '-') {
+							var val = tr.cells[i].innerHTML * liter;
+							tr.cells[i].innerHTML = val.toFixed(1);
+						}
+					}
+					if(tr.id == 4) {
+						tr.style.background = '#333';
+					} else {
+						tr.style.background = 'none';
+					}
+				});
+			}
+
 			if(json.type == "updatePump") {
 				document.querySelectorAll("input[name='interval']").forEach((input) => {
 					if(input.value == json.pumpinterval) {
@@ -124,7 +280,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 				document.getElementById('starttime').value = json.lightstart;
 				document.getElementById('duration').value = json.lightduration;
 			}
-			console.log(event.data);
+			//console.log(event.data);
 		}
 	}
 

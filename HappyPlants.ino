@@ -25,6 +25,13 @@ struct {
 	long duration;
 } pumpControl;
 
+struct cycleLength {
+	long cycleStart = 0;
+	int totalDays = 0;
+	int weeks = 0;
+	int days = 0;
+} cycleLength;
+
 
 // light relay pin & state
 #define LIGHTRELAY_PIN 19
@@ -65,6 +72,41 @@ struct tm local;
 #define LED_PIN 13
 bool ledState = 0;
 
+
+int getCycleLength() {
+	static char ret[40];
+
+	time_t now = time(NULL);
+	if(SPIFFS.exists("/cyclestart.dat")) {
+		File f = SPIFFS.open("/wificred.dat", FILE_READ);
+		f.read((byte *)&cycleLength.cycleStart, sizeof(cycleLength.cycleStart));
+		f.close();
+	} else {
+		cycleLength.cycleStart = now;
+srand(now);
+cycleLength.cycleStart = now - ((rand() % 100) * 86400) + rand() % 86400;
+	}
+
+	time_t diff = now - cycleLength.cycleStart;
+
+	struct tm *tm_diff = gmtime(&diff);
+
+	cycleLength.totalDays = tm_diff->tm_yday;
+    cycleLength.weeks = tm_diff->tm_yday / 7;
+    cycleLength.days = cycleLength.weeks - ((cycleLength.weeks / 7) * 7);
+
+	if(!cycleLength.weeks) {
+		sprintf(ret, "%d days", cycleLength.totalDays);
+	} else {
+		if(!cycleLength.days) {
+			sprintf(ret, "%d days or %d weeks", cycleLength.totalDays, cycleLength.weeks);
+		} else {
+			sprintf(ret, "%d days or %d weeks and %d days", cycleLength.totalDays, cycleLength.weeks, cycleLength.days);
+		}
+	}
+	return(cycleLength.totalDays);
+}
+
 void notifyClients() {
 	Serial.println("notify clients");
 	ws.textAll(String(ledState));
@@ -90,6 +132,7 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
 	Serial.println("on event");
 	switch (type) {
 		case WS_EVT_CONNECT:
+			updateScheme_ws();
 			Serial.printf("WebSocket client #%u connected from %s\n",
 				client->id(), client->remoteIP().toString().c_str());
 			break;
@@ -117,7 +160,8 @@ void handleRoot(AsyncWebServerRequest *request) {
 		<head>
 			<!-- <meta http-equiv='refresh' content='5'/> -->
     		<title>Happy Plants</title>
-    		<link rel="stylesheet" href="/happyPlants.css">
+    		<link rel="stylesheet" href="/happyPlants.css" />
+    		<link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
 		</head>
 		<body>
 			<div id="header">
@@ -132,7 +176,8 @@ void handleRoot(AsyncWebServerRequest *request) {
 			</div>
 
 			<div>
-			<p>
+			<br>
+			<span id="left">
 			<span id="elem">Pump relay: <span id="pumpRelay">%s</span></span>
 			<br>
 			<span id="elem">Interval (min):
@@ -150,21 +195,29 @@ void handleRoot(AsyncWebServerRequest *request) {
 			<input type="radio" name="duration" id="d" value="20"><label for="d">20</label>
 			<input type="radio" name="duration" id="e" value="30"><label for="e">30</label>
 			</span>
-			<p>
+
+			<br>
+			<br>
 			<span id="elem">Light relay: <span id="lightRelay">%s</span></span>
 			<br>
 			<span id="elem">Start time: <input type="time" id='starttime' value="%s" class="time"></span>
 			<span id="elem">Duration: <input type="time" id='duration' value="%s" class="time"></span>
-			</div>
 
-			<div>
+			<br>
 			<br>
 			<span id="elem">temperature: <span id="temperature">%4.2f</span><br>
 			<canvas class="chart" id="mycanvas" width="400" height="100"></canvas>
 			</span>
-			<p>
+
+			<br>
+			<br>
 			<span id="elem">humidity: <span id="humidity">%4.2f</span><br>
 			<canvas class="chart" id="mycanvas2" width="400" height="100"></canvas>
+			</span>
+			</span>
+
+			<span id="right">
+				Cycle run since: <span id="cyclelen">%d</span>
 			</span>
 			</div>
 			<script>
@@ -173,7 +226,6 @@ void handleRoot(AsyncWebServerRequest *request) {
 			</script>
 		</body>
 		<script src="/happyPlants.js"></script>
-		<script src="https://cdn.jsdelivr.net/timepicker.js/latest/timepicker.min.js"></script>
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/smoothie/1.34.0/smoothie.min.js"></script>
 		</html>),
 		wifiSignal,
@@ -184,11 +236,12 @@ void handleRoot(AsyncWebServerRequest *request) {
 		lightControl.duration_s,
 		DHT.temperature,
 		DHT.humidity,
+		getCycleLength(),
 		pumpControl.interval,
 		pumpControl.duration
-
 	);
 	request->send(200, "text/html", message);
+
 	digitalWrite(LED_PIN, ledState = 0);
 }
 
@@ -380,6 +433,15 @@ void updateLight_ws() {
 	ws.textAll(output);
 }
 
+void updateScheme_ws() {
+	DynamicJsonDocument val(256);
+	val["type"] = "updateScheme";
+	val["cycleLength"] = getCycleLength();
+	String output;
+	serializeJson(val, output);
+	ws.textAll(output);
+}
+
 void update_ws() {
 	struct tm tm;
 	DynamicJsonDocument val(256);
@@ -481,11 +543,18 @@ void startWebServer() {
 	server.on("/wifiSignal", handleSignal);
 	server.on("/pumpRelay", handlePumpRelay);
 	server.on("/lightRelay", handleLightRelay);
+	server.on("/bla.ttf", [](AsyncWebServerRequest *request) {
+		request->send(SPIFFS, "/bla.ttf", "application/x-font-ttf");
+	});
 	server.on("/happyPlants.js", [](AsyncWebServerRequest *request) {
 		request->send(SPIFFS, "/happyPlants.js", "application/x-javascript");
 	});
 	server.on("/happyPlants.css", HTTP_GET, [](AsyncWebServerRequest *request) {
 		request->send(SPIFFS, "/happyPlants.css", "text/css");
+	});
+	server.on("/favicon.svg", HTTP_GET, [](AsyncWebServerRequest *request) {
+Serial.println("send favicon.svg, wth!");
+		request->send(SPIFFS, "/favicon.svg", "image/svg+xml");
 	});
 	server.on("/inline", [](AsyncWebServerRequest *request) {
 		request->send(200, "text/plain", "this works as well");
@@ -560,7 +629,6 @@ void setup() {
 	startWebSocket();
 	delay(200);
 
-
 	if((local.tm_hour * 3600 + local.tm_min * 60) > lightControl.startTime_l
 	&& (local.tm_hour * 3600 + local.tm_min * 60) < lightControl.startTime_l + lightControl.duration_l) {
 		lightstate = 1;
@@ -626,7 +694,7 @@ void loop() {
 	}
 
 	// every second second, read sensors, inform the clients
-	if(millis() % 2000 == 0) {
+	if(millis() % 5000 == 0) {
 
 		wifiSignal = WiFi.RSSI();
 		int retry = 5;
@@ -667,8 +735,12 @@ RETRY:
 		DHT.temperature = temperature / 20;
 		DHT.humidity = humidity / 20;
 
+		//Serial.printf("Memory: %.2f/%.2f\n", ESP.getFreeHeap() / 1024.0, ESP.getHeapSize() / 1024.0);
 		// update the websocket clients
-//		Serial.printf("Memory: %.2f/%.2f\n", ESP.getFreeHeap() / 1024.0, ESP.getHeapSize() / 1024.0);
 		update_ws();
+	}
+
+	if(millis() % 3600000 == 0) {
+		updateScheme_ws();
 	}
 }
