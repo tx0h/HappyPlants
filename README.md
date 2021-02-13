@@ -9,7 +9,7 @@ It is a bit more complicated to switch the light on and off. The same is valid f
 With the happy plant firmware, it is possible to trigger the switches via two separated relays.
 The timing intervals are easy to setup via the web interface, which looks like this:
 
-![screenshot](https://repository-images.githubusercontent.com/336855480/328fa980-6a17-11eb-9929-4065c126b976)
+![screenshot](https://repository-images.githubusercontent.com/336855480/5866e500-6e41-11eb-8c1a-b29520fe7d47)
 
 The setup:
 
