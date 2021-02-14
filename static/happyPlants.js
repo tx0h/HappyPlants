@@ -1,11 +1,32 @@
 document.addEventListener("DOMContentLoaded", function(e) {
 
-	var nutritionScheme = `
+	var liter = 1;
+	var smoothie = new SmoothieChart({
+	    millisPerPixel: 2000,
+		grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
+	});
+	var smoothie2 = new SmoothieChart({
+		millisPerPixel: 2000,
+		grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
+	});
+	smoothie.streamTo(document.getElementById("mycanvas"));
+	smoothie2.streamTo(document.getElementById("mycanvas2"));
+	var line1 = new TimeSeries();
+	var line2 = new TimeSeries();
+	smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:1});
+	smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:1});
+
+	
+	var gateway = "ws://" + window.location.hostname + "/ws";
+	var websocket;
+
+	function nutritionScheme() {
+		return(`
 		<br>
 		<br>
-		Nutrition scheme:
+		Nutrition scheme for <input type="text" value="${liter}" size="3" id="liter"> liter:
 		<br>
-		<table>
+		<table id="table">
 		<tr>
 			<th>Description</th>
 			<th>Weeks</span>
@@ -122,7 +143,9 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 
 		</table>
-	`;
+		`);
+	}
+
 	var starttime = document.getElementById('starttime');
 	starttime.addEventListener('focusout',
 		function(e) {
@@ -147,26 +170,6 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		}
 	);
 
-	function pumpInterval(event) {
-		console.log("pump interval value: "+this.value);
-		if(event.type) {
-			ajaxPost('/pumpRelay', {
-				"interval": this.value
-			}, function(data) {
-				console.log(data);
-			});
-		}
-	}
-	function pumpDuration(event) {
-		console.log("pump duration value: "+this.value);
-		if(event.type) {
-			ajaxPost('/pumpRelay', {
-				"duration": this.value
-			}, function(data) {
-				console.log(data);
-			});
-		}
-	}
 	document.querySelectorAll("input[name='interval']").forEach((input) => {
 		if(input.value == externalPumpInterval) {
 			input.checked = true;
@@ -179,18 +182,59 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		}
 		input.addEventListener('change', pumpDuration);
 	});
+
+
+	function pumpInterval(event) {
+		console.log("pump interval value: "+this.value);
+		if(event.type) {
+			ajaxPost('/pumpRelay', {
+				"interval": this.value
+			}, function(data) {
+				console.log(data);
+			});
+		}
+	}
+
+	function pumpDuration(event) {
+		console.log("pump duration value: "+this.value);
+		if(event.type) {
+			ajaxPost('/pumpRelay', {
+				"duration": this.value
+			}, function(data) {
+				console.log(data);
+			});
+		}
+	}
+
+	function literChanged(event) {
+		console.log("changed liter value: "+this.value);
+		liter = this.value;
+		websocket.send(
+			JSON.stringify({
+				type: "literChanged",
+				liter: parseInt(liter)
+			}));
+	}
+
+	function resetCycle(event) {
+		console.log("reset cycle");
+		websocket.send(
+			JSON.stringify({
+				type: "resetCycle",
+			}));
+	}
 	
 	function cycleAsText(totalDays) {
 	    weeks = parseInt(totalDays / 7);
 	    days = weeks - (parseInt(weeks / 7) * 7);
-
+		var reset = '&#10226';
 		if(!weeks) {
-			return(`${totalDays} days ${nutritionScheme}`);
+			return(`${totalDays} days <span id="resetCycle">${reset}</span>${nutritionScheme()}`);
 		} else {
 			if(!days) {
-				return(`${totalDays} days or ${weeks} weeks ${nutritionScheme}`);
+				return(`${totalDays} days or ${weeks} weeks <span id="resetCycle">${reset}</span>${nutritionScheme}()`);
 			} else {
-				return(`${totalDays} days or ${weeks} weeks and ${days} days ${nutritionScheme}`);
+				return(`${totalDays} days or ${weeks} weeks and ${days} days <span id="resetCycle">${reset}</span>${nutritionScheme()}`);
 			}
 		}
 	}
@@ -235,7 +279,9 @@ document.addEventListener("DOMContentLoaded", function(e) {
 	function onMessage(event) {
 		if(event.type == "message") {
 			json = JSON.parse(event.data);
+
 			if(json.type == "update") {
+
 				document.getElementById('timedate').innerHTML = json.timedate;
 				document.getElementById('wifiSignal').innerHTML = json.wifiSignal;
 				document.getElementById('pumpRelay').innerHTML = json.pumpstate ? "<u>ON</u>" : "OFF";
@@ -244,10 +290,10 @@ document.addEventListener("DOMContentLoaded", function(e) {
 				document.getElementById('temperature').innerHTML = json.temperature;
 				line2.append(new Date().getTime(), json.humidity);
 				document.getElementById('humidity').innerHTML = json.humidity;
-			}
 
-			if(json.type == "updateScheme") {
-				var liter = 20;
+			} else if(json.type == "updateScheme") {
+
+				liter = json.liter;
 				document.getElementById('cyclelen').innerHTML = cycleAsText(json.cycleLength);
 				document.querySelectorAll("tr[class='schemerow']").forEach((tr) => {
 					for(var i=3; i <= 8; i++) {
@@ -255,16 +301,31 @@ document.addEventListener("DOMContentLoaded", function(e) {
 							var val = tr.cells[i].innerHTML * liter;
 							tr.cells[i].innerHTML = val.toFixed(1);
 						}
+
+						var createClickHandler = function(clickedRow) {
+							return function() {
+								websocket.send(
+									JSON.stringify({
+										type: "schemeStep",
+										schemeStep: parseInt(clickedRow.id)
+									}));
+							};
+						};
+						tr.onclick = createClickHandler(tr);
 					}
-					if(tr.id == 4) {
+					if(tr.id == json.schemeStep) {
 						tr.style.background = '#333';
 					} else {
 						tr.style.background = 'none';
 					}
 				});
-			}
+				document.querySelectorAll("input[id='liter']").forEach((input) => {
+					input.addEventListener('change', literChanged);
+				});
+				document.getElementById('resetCycle').onclick = resetCycle;
+				
+			} else if(json.type == "updatePump") {
 
-			if(json.type == "updatePump") {
 				document.querySelectorAll("input[name='interval']").forEach((input) => {
 					if(input.value == json.pumpinterval) {
 						input.checked = true;
@@ -275,33 +336,18 @@ document.addEventListener("DOMContentLoaded", function(e) {
 						input.checked = true;
 					}
 				});
-			}
-			if(json.type == "updateLight") {
+
+			} else if(json.type == "updateLight") {
+
 				document.getElementById('starttime').value = json.lightstart;
 				document.getElementById('duration').value = json.lightduration;
+
+			} else {
+				console.log(event.data);
 			}
-			//console.log(event.data);
 		}
 	}
 
-	var smoothie = new SmoothieChart({
-	    millisPerPixel: 2000,
-		grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
-	});
-	var smoothie2 = new SmoothieChart({
-		millisPerPixel: 2000,
-		grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
-	});
-	smoothie.streamTo(document.getElementById("mycanvas"));
-	smoothie2.streamTo(document.getElementById("mycanvas2"));
-	var line1 = new TimeSeries();
-	var line2 = new TimeSeries();
-	smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:1});
-	smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:1});
-
-	
-	var gateway = "ws://" + window.location.hostname + "/ws";
-	var websocket;
 	function initWebSocket() {
 		console.log('Trying to open a WebSocket connection...');
 		websocket = new WebSocket(gateway);
@@ -330,7 +376,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		document.getElementById('toggle').addEventListener('click', toggle);
 	}
 	function toggle(){
-		websocket.send('toggle');
+		websocket.send(JSON.stringify({type: "toggle"}));
 	}
 
 	function resetButton() {
@@ -340,5 +386,34 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		websocket.send('reset');
 	}
 
-
 });
+
+function listAllEventListeners() {
+  const allElements = Array.prototype.slice.call(document.querySelectorAll('*'));
+  allElements.push(document);
+  allElements.push(window);
+
+  const types = [];
+
+  for (let ev in window) {
+    if (/^on/.test(ev)) types[types.length] = ev;
+  }
+
+  let elements = [];
+  for (let i = 0; i < allElements.length; i++) {
+    const currentElement = allElements[i];
+    for (let j = 0; j < types.length; j++) {
+      if (typeof currentElement[types[j]] === 'function') {
+        elements.push({
+          "node": currentElement,
+          "type": types[j],
+          "func": currentElement[types[j]].toString(),
+        });
+      }
+    }
+  }
+
+  return elements.sort(function(a,b) {
+    return a.type.localeCompare(b.type);
+  });
+}

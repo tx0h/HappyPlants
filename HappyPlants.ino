@@ -25,12 +25,12 @@ struct {
 	long duration;
 } pumpControl;
 
-struct cycleLength {
+struct cycle {
 	long cycleStart = 0;
 	int totalDays = 0;
-	int weeks = 0;
-	int days = 0;
-} cycleLength;
+	int schemeStep = 1;
+	int liter = 1;
+} cycle;
 
 
 // light relay pin & state
@@ -69,60 +69,105 @@ struct tm local;
 #define STRINGIFY(...) #__VA_ARGS__
 
 // playground led, pin state
-#define LED_PIN 13
+#define LED_PIN 21
 bool ledState = 0;
 
+
+void saveCycleData() {
+	Serial.printf("WRITE: cycleStart: %d, liter: %d, schemeStep: %d\n",cycle.cycleStart, cycle.liter, cycle.schemeStep);
+	File f = SPIFFS.open("/cycledata.dat", FILE_WRITE);
+	f.write((byte *)&cycle, sizeof(struct cycle));
+	f.close();
+	updateScheme_ws();
+}
 
 int getCycleLength() {
 	static char ret[40];
 
 	time_t now = time(NULL);
-	if(SPIFFS.exists("/cyclestart.dat")) {
-		File f = SPIFFS.open("/wificred.dat", FILE_READ);
-		f.read((byte *)&cycleLength.cycleStart, sizeof(cycleLength.cycleStart));
+	if(SPIFFS.exists("/cycledata.dat")) {
+		File f = SPIFFS.open("/cycledata.dat", FILE_READ);
+		f.read((byte *)&cycle, sizeof(struct cycle));
 		f.close();
+		Serial.printf("LOADED: cycleStart: %d, liter: %d, schemeStep: %d\n",cycle.cycleStart, cycle.liter, cycle.schemeStep);
 	} else {
-		cycleLength.cycleStart = now;
-srand(now);
-cycleLength.cycleStart = now - ((rand() % 100) * 86400) + rand() % 86400;
+		cycle.cycleStart = now;
+		cycle.totalDays = 0;
+		cycle.liter = 1;
+		cycle.schemeStep = 1;
+		saveCycleData();
+		return(cycle.totalDays);
 	}
 
-	time_t diff = now - cycleLength.cycleStart;
+	time_t diff = now - cycle.cycleStart;
 
 	struct tm *tm_diff = gmtime(&diff);
+	cycle.totalDays = tm_diff->tm_yday;
+/*
+    cycle.weeks = tm_diff->tm_yday / 7;
+    cycle.days = cycle.weeks - ((cycle.weeks / 7) * 7);
 
-	cycleLength.totalDays = tm_diff->tm_yday;
-    cycleLength.weeks = tm_diff->tm_yday / 7;
-    cycleLength.days = cycleLength.weeks - ((cycleLength.weeks / 7) * 7);
 
-	if(!cycleLength.weeks) {
-		sprintf(ret, "%d days", cycleLength.totalDays);
+	if(!cycle.weeks) {
+		sprintf(ret, "%d days", cycle.totalDays);
 	} else {
-		if(!cycleLength.days) {
-			sprintf(ret, "%d days or %d weeks", cycleLength.totalDays, cycleLength.weeks);
+		if(!cycle.days) {
+			sprintf(ret, "%d days or %d weeks", cycle.totalDays, cycle.weeks);
 		} else {
-			sprintf(ret, "%d days or %d weeks and %d days", cycleLength.totalDays, cycleLength.weeks, cycleLength.days);
+			sprintf(ret, "%d days or %d weeks and %d days", cycle.totalDays, cycle.weeks, cycle.days);
 		}
 	}
-	return(cycleLength.totalDays);
+*/
+	return(cycle.totalDays);
 }
 
-void notifyClients() {
+void updateLedState() {
 	Serial.println("notify clients");
-	ws.textAll(String(ledState));
+	DynamicJsonDocument val(256);
+	val["type"] = "toggle";
+	val["state"] = ledState;
+	digitalWrite(LED_PIN, ledState);
+	String output;
+	serializeJson(val, output);
+	ws.textAll(output);
 }
 
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 	AwsFrameInfo *info = (AwsFrameInfo*)arg;
-	Serial.println("handle web socket message");
 	if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+
+		StaticJsonDocument<256> json;
 		data[len] = 0;
-		if (strcmp((char*)data, "toggle") == 0) {
-			ledState = !ledState;
-			notifyClients();
-		}
-		if (strcmp((char*)data, "reset") == 0) {
-			ESP.restart();
+
+		Serial.printf("some websocket message: >>%s<<\n", data);
+		DeserializationError error = deserializeJson(json, data);
+		if(error) {
+			Serial.printf("not really json: %s\n", data);
+
+			if (strcmp((char*)data, "reset") == 0) {
+				ESP.restart();
+			}
+		} else {
+			Serial.printf("json handler: %s\n", data);
+			if(!strcmp(json["type"], "toggle")) {
+				ledState = !ledState;
+				updateLedState();
+			}
+			if(!strcmp(json["type"], "schemeStep")) {
+				cycle.schemeStep = json["schemeStep"];
+				saveCycleData();
+			}
+			if(!strcmp(json["type"], "literChanged")) {
+				cycle.liter = json["liter"];
+				saveCycleData();
+			}
+			if(!strcmp(json["type"], "resetCycle")) {
+				cycle.cycleStart = time(NULL);
+				cycle.totalDays = 0;
+				cycle.liter = 1;
+				cycle.schemeStep = 1;
+				saveCycleData();
+			}
 		}
 	}
 }
@@ -437,6 +482,8 @@ void updateScheme_ws() {
 	DynamicJsonDocument val(256);
 	val["type"] = "updateScheme";
 	val["cycleLength"] = getCycleLength();
+	val["schemeStep"] = cycle.schemeStep;
+	val["liter"] = cycle.liter;
 	String output;
 	serializeJson(val, output);
 	ws.textAll(output);

@@ -2,6 +2,17 @@
 	font-family: 'alt';
 	src: url('bla.ttf') format('truetype');
 }
+input#liter {
+	border: 1px solid #444;
+	background-color: #333;
+	color: aquamarine;
+	font-family: inherit;
+}
+span#resetCycle {
+	color: #f80;
+	vertical-align: -3px;
+	font-size: 26px;
+}
 body {
 	background-color: #222;
 	font-family: monospace;
