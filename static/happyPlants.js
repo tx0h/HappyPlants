@@ -212,7 +212,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		websocket.send(
 			JSON.stringify({
 				type: "literChanged",
-				liter: parseInt(liter)
+				liter: parseFloat(liter).toFixed(1)
 			}));
 	}
 
@@ -287,9 +287,9 @@ document.addEventListener("DOMContentLoaded", function(e) {
 				document.getElementById('pumpRelay').innerHTML = json.pumpstate ? "<u>ON</u>" : "OFF";
 				document.getElementById('lightRelay').innerHTML = json.lightstate ? "<u>ON</u>" : "OFF";
 				line1.append(new Date().getTime(), json.temperature);
-				document.getElementById('temperature').innerHTML = json.temperature;
+				document.getElementById('temperature').innerHTML = json.temperature.toFixed(2);
 				line2.append(new Date().getTime(), json.humidity);
-				document.getElementById('humidity').innerHTML = json.humidity;
+				document.getElementById('humidity').innerHTML = json.humidity.toFixed(2);
 
 			} else if(json.type == "updateScheme") {
 
@@ -323,6 +323,11 @@ document.addEventListener("DOMContentLoaded", function(e) {
 					input.addEventListener('change', literChanged);
 				});
 				document.getElementById('resetCycle').onclick = resetCycle;
+				/*
+				document.querySelectorAll("span[id='resetCycle']").forEach((span) => {
+					span.addEventListener('click', resetCycle);
+				});
+				*/
 				
 			} else if(json.type == "updatePump") {
 

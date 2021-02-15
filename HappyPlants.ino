@@ -29,7 +29,7 @@ struct cycle {
 	long cycleStart = 0;
 	int totalDays = 0;
 	int schemeStep = 1;
-	int liter = 1;
+	float liter = 1;
 } cycle;
 
 
