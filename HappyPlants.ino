@@ -1,5 +1,6 @@
 #include <Arduino.h>
-#include <dhtnew.h>
+//#include <dhtnew.h>
+#include <DHTSensor.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <ESPAsyncWebServer.h>
@@ -12,7 +13,12 @@
 
 // temperature/humidity sensor pin, vars
 #define DHT22_PIN 5
-DHTNEW DHT(5);
+//DHTNEW DHT(5);
+DHTSensor sensor(5);
+struct {
+	float temperature;
+	float humidity;
+} DHT;
 int bufcnt;
 float temperature_buf[20];
 float humidity_buf[20];
@@ -639,7 +645,10 @@ void startWiFi() {
 
 void setup() {
 
-	DHT.read();
+//	DHT.read();
+	DHTSensorMeasurement re = sensor.Read();
+	DHT.temperature = re.TemperatureInCelsius();
+	DHT.humidity = re.Humidity();
 	bufcnt=0;
 	for(int i=0; i<=19; i++) {
 		temperature_buf[i] = DHT.temperature;
@@ -748,9 +757,13 @@ void loop() {
 
 RETRY:
 		//int chk = DHT.read22(DHT22_PIN);
-		int chk = DHT.read();
+//		int chk = DHT.read();
+		DHTSensorMeasurement re = sensor.Read();
+		DHT.temperature = re.TemperatureInCelsius();
+		DHT.humidity = re.Humidity();
 		float temperature = 0;
 		float humidity = 0;
+		/*
 		switch (chk) {
 			case DHTLIB_OK:
 				//Serial.print("OK,\t");
@@ -770,6 +783,7 @@ RETRY:
 					goto RETRY;
 				break;
 		}
+		*/
 		temperature_buf[bufcnt] = DHT.temperature;
 		humidity_buf[bufcnt] = DHT.humidity;
 		if(++bufcnt >= 20) {
