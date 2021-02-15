@@ -3,6 +3,7 @@
 #include <DHTSensor.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <Update.h>
 #include <ESPAsyncWebServer.h>
 #include <stdio.h>
 #include <ArduinoJson.h>
@@ -78,6 +79,8 @@ struct tm local;
 #define LED_PIN 21
 bool ledState = 0;
 
+int rebootNow = 0;
+
 
 void saveCycleData() {
 	Serial.printf("WRITE: cycleStart: %d, liter: %d, schemeStep: %d\n",cycle.cycleStart, cycle.liter, cycle.schemeStep);
@@ -95,7 +98,7 @@ int getCycleLength() {
 		File f = SPIFFS.open("/cycledata.dat", FILE_READ);
 		f.read((byte *)&cycle, sizeof(struct cycle));
 		f.close();
-		Serial.printf("LOADED: cycleStart: %d, liter: %d, schemeStep: %d\n",cycle.cycleStart, cycle.liter, cycle.schemeStep);
+		Serial.printf("LOADED: cycleStart: %d, liter: %f, schemeStep: %d\n",cycle.cycleStart, cycle.liter, cycle.schemeStep);
 	} else {
 		cycle.cycleStart = now;
 		cycle.totalDays = 0;
@@ -219,7 +222,7 @@ void handleRoot(AsyncWebServerRequest *request) {
 			<span id="header">Happy Plants</span>
 			<span class="right">
 				<input type="button" id="toggle" value="T">
-				<input type="button" id="reset" value="R">
+				<input type="button" id="reset" value="Reset">
 				Signal strength: <span id="wifiSignal">%d</span>
 				&nbsp; &nbsp; &nbsp; &nbsp;
 				<span id="timedate">%s</span></span>
@@ -311,6 +314,27 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
 		// close the file handle as the upload is now done
 		request->_tempFile.close();
 //		request->redirect("/");
+	}
+}
+
+void handleUpgrade(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+	if (!index) {
+		Serial.printf("Update Start: %s\n", filename.c_str());
+		if (!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)) {
+			Update.printError(Serial);
+		}
+	}
+	if (!Update.hasError()) {
+		if (Update.write(data, len) != len) {
+			Update.printError(Serial);
+		}
+	}
+	if(final) {
+		if (Update.end(true)) {
+			Serial.printf("Update Success: %uB\n", index + len);
+		} else {
+			Update.printError(Serial);
+		}
 	}
 }
 
@@ -618,6 +642,18 @@ Serial.println("send favicon.svg, wth!");
 		request->send(200);
 	}, handleUpload);
 
+
+	server.on("/upgrade", HTTP_POST, [](AsyncWebServerRequest *request) {
+		rebootNow = !Update.hasError();
+		AsyncWebServerResponse *response =
+			request->beginResponse(200, "text/html", rebootNow ? "<h1><strong>Update DONE</strong></h1><br><a href='/'>Return Home</a>" : "<h1><strong>Update FAILED</strong></h1><br><a href='/updt'>Retry?</a>");
+			response->addHeader("Connection", "close");
+			request->send(response);
+
+		},
+		handleUpgrade
+	);
+
 	server.begin();
 	Serial.println("HTTP server started");
 }
@@ -697,6 +733,11 @@ int lastpump = -1;
 int lastlight = -1;
 void loop() {
 	struct tm tm;
+
+	if (rebootNow) {
+		Serial.println("Restart");
+		ESP.restart();
+	}
 
 	if(millis() % 1000 == 0) {
 		getLocalTime(&tm);
