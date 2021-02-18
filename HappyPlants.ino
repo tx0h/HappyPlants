@@ -1,4 +1,5 @@
 #include <Arduino.h>
+
 //#include <dhtnew.h>
 #include <DHTSensor.h>
 #include <WiFi.h>
@@ -76,7 +77,7 @@ struct tm local;
 #define STRINGIFY(...) #__VA_ARGS__
 
 // playground led, pin state
-#define LED_PIN 21
+#define LED_PIN 2
 bool ledState = 0;
 
 int rebootNow = 0;
@@ -322,18 +323,23 @@ void handleUpgrade(AsyncWebServerRequest *request, String filename, size_t index
 		Serial.printf("Update Start: %s\n", filename.c_str());
 		if (!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)) {
 			Update.printError(Serial);
+			request->send(200, "text/plain", "\n********\n*** ERROR\n");
 		}
 	}
 	if (!Update.hasError()) {
 		if (Update.write(data, len) != len) {
 			Update.printError(Serial);
+			request->send(200, "text/plain", "\n********\n*** ERROR\n");
 		}
 	}
 	if(final) {
 		if (Update.end(true)) {
 			Serial.printf("Update Success: %uB\n", index + len);
+			request->send(200, "text/plain", "\n********\nALL FINE.\n");
+			delay(500);
 		} else {
 			Update.printError(Serial);
+			request->send(200, "text/plain", "\n********\n*** ERROR\n");
 		}
 	}
 }
@@ -697,14 +703,15 @@ void setup() {
 	digitalWrite(PUMPRELAY_PIN, HIGH);
 
 	pinMode(LIGHTRELAY_PIN, OUTPUT);
-	digitalWrite(LIGHTRELAY_PIN, HIGH);
+	digitalWrite(LIGHTRELAY_PIN, lightstate);
 
 
 	Serial.begin(115200);
 	Serial.println("*** OK.");
+	Serial.printf("sketch size:%d\nsketch md5sum: %s\nfree sketch space: %d\n", ESP.getSketchSize(), ESP.getSketchMD5(), ESP.getFreeSketchSpace());
 //	Serial.println(DHT_LIB_VERSION);
 
-	delay(200);
+	delay(500);
 
 
 //	server.onNotFound(handleNotFound);
@@ -764,8 +771,8 @@ void loop() {
 		*/
 
 		if(now == lightControl.startTime_l
-		&& tm.tm_min != lastlight) {
-			lastlight = tm.tm_min;
+		&& micros() != lastlight) {
+			lastlight = micros();
 			lightstate = 1;
 			Serial.println("start light");
 			digitalWrite(LIGHTRELAY_PIN, !lightstate);
@@ -778,7 +785,7 @@ void loop() {
 		: lightControl.startTime_l + lightControl.duration_l))
 		|| (now == 0 && lightControl.startTime_l + lightControl.duration_l == 86400))
 		&& tm.tm_min != lastlight) {
-			lastlight = tm.tm_min;
+			lastlight = -1;
 			lightstate = 0;
 			Serial.println("stop light");
 			digitalWrite(LIGHTRELAY_PIN, !lightstate);
