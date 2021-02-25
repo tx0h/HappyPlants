@@ -226,7 +226,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 	
 	function cycleAsText(totalDays) {
 	    weeks = parseInt(totalDays / 7);
-	    days = weeks - (parseInt(weeks / 7) * 7);
+	    days = totalDays % 7;
 		var reset = '&#10226';
 		if(!weeks) {
 			return(`${totalDays} days <span id="resetCycle">${reset}</span>${nutritionScheme()}`);
