@@ -43,6 +43,12 @@ td {
 td#desc {
 	text-align: left;
 }
+td#dps {
+	text-align: right;
+}
+span.dps {
+	font-weight: bold;
+}
 span.right {
 	float: right;
 	margin-top: -0px;

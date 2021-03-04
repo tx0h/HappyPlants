@@ -25,9 +25,13 @@ int bufcnt;
 float temperature_buf[20];
 float humidity_buf[20];
 
+#define LIGHTSENSOR_PIN 36
+unsigned int lightsensor;
+
 // pump relay pin, state, struct
 #define PUMPRELAY_PIN 18
 int pumpstate = 0;
+
 struct {
 	long interval;
 	long duration;
@@ -38,8 +42,10 @@ struct cycle {
 	int totalDays = 0;
 	int schemeStep = 1;
 	float liter = 1;
+	int daysPerStep[7];
 } cycle;
 
+//cycle.daysPerStep = {0, 0, 0, 0, 0, 0, 0};
 
 // light relay pin & state
 #define LIGHTRELAY_PIN 19
@@ -105,14 +111,23 @@ int getCycleLength() {
 		cycle.totalDays = 0;
 		cycle.liter = 1;
 		cycle.schemeStep = 1;
+		for(int i=0; i < 7; i++) {
+			cycle.daysPerStep[i] = 0;
+		}
 		saveCycleData();
 		return(cycle.totalDays);
 	}
 
 	time_t diff = now - cycle.cycleStart;
-
 	struct tm *tm_diff = gmtime(&diff);
-	cycle.totalDays = tm_diff->tm_yday;
+
+	if(tm_diff->tm_yday > cycle.totalDays) {
+		cycle.daysPerStep[cycle.schemeStep-1] += tm_diff->tm_yday - cycle.totalDays;
+		cycle.totalDays = tm_diff->tm_yday;
+		saveCycleData();
+	} else {
+		cycle.totalDays = tm_diff->tm_yday;
+	}
 /*
     cycle.weeks = tm_diff->tm_yday / 7;
     cycle.days = cycle.weeks - ((cycle.weeks / 7) * 7);
@@ -137,6 +152,8 @@ void updateLedState() {
 	val["type"] = "toggle";
 	val["state"] = ledState;
 	digitalWrite(LED_PIN, ledState);
+//	digitalWrite(PUMPRELAY_PIN, pumpstate = !pumpstate);
+	digitalWrite(LIGHTRELAY_PIN, lightstate = !lightstate);
 	String output;
 	serializeJson(val, output);
 	ws.textAll(output);
@@ -176,6 +193,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 				cycle.totalDays = 0;
 				cycle.liter = 1;
 				cycle.schemeStep = 1;
+				for(int i=0; i < 7; i++) {
+					cycle.daysPerStep[i] = 0;
+				}
 				saveCycleData();
 			}
 		}
@@ -516,8 +536,12 @@ void updateLight_ws() {
 
 void updateScheme_ws() {
 	DynamicJsonDocument val(256);
+	DynamicJsonDocument arr(256);
+
 	val["type"] = "updateScheme";
 	val["cycleLength"] = getCycleLength();
+	copyArray(cycle.daysPerStep, arr);
+	val["daysPerStep"] = arr;
 	val["schemeStep"] = cycle.schemeStep;
 	val["liter"] = cycle.liter;
 	String output;
@@ -540,6 +564,7 @@ void update_ws() {
 	val["temperature"] = DHT.temperature;
 	val["pumpstate"] = pumpstate;
 	val["lightstate"] = lightstate;
+	val["lightsensor"] = lightsensor;
 	String output;
 	serializeJson(val, output);
 	ws.textAll(output);
@@ -560,7 +585,12 @@ void handleNotFound(AsyncWebServerRequest *request) {
 		message += " " + request->argName(i) + ": " + request->arg(i) + "\n";
 	}
 
-	request->send(404, "text/plain", message);
+	if(SPIFFS.exists(request->url())) {
+		request->send(SPIFFS, request->url(), "application/x-binary");
+	} else {
+		request->send(404, "text/plain", message);
+		Serial.println("404 --> "+message);
+	}
 	digitalWrite(LED_PIN, ledState = 0);
 }
 
@@ -660,6 +690,8 @@ Serial.println("send favicon.svg, wth!");
 		handleUpgrade
 	);
 
+	server.onNotFound(handleNotFound);
+
 	server.begin();
 	Serial.println("HTTP server started");
 }
@@ -701,9 +733,11 @@ void setup() {
 
 	pinMode(PUMPRELAY_PIN, OUTPUT);
 	digitalWrite(PUMPRELAY_PIN, HIGH);
+	delay(100);
 
 	pinMode(LIGHTRELAY_PIN, OUTPUT);
-	digitalWrite(LIGHTRELAY_PIN, lightstate);
+	digitalWrite(LIGHTRELAY_PIN, HIGH);
+	delay(100);
 
 
 	Serial.begin(115200);
@@ -714,7 +748,6 @@ void setup() {
 	delay(500);
 
 
-//	server.onNotFound(handleNotFound);
 	Serial.println("Start SPIFFS");
 	startSPIFFS();
 	delay(200);
@@ -738,6 +771,7 @@ void setup() {
 
 int lastpump = -1;
 int lastlight = -1;
+int lastsec = -1;
 void loop() {
 	struct tm tm;
 
@@ -803,6 +837,9 @@ void loop() {
 		wifiSignal = WiFi.RSSI();
 		int retry = 5;
 
+		if(tm.tm_sec != lastsec) {
+			lightsensor = analogRead(LIGHTSENSOR_PIN);
+		}
 RETRY:
 		//int chk = DHT.read22(DHT22_PIN);
 //		int chk = DHT.read();
@@ -846,6 +883,7 @@ RETRY:
 
 		//Serial.printf("Memory: %.2f/%.2f\n", ESP.getFreeHeap() / 1024.0, ESP.getHeapSize() / 1024.0);
 		// update the websocket clients
+		lastsec = tm.tm_sec;
 		update_ws();
 	}
 

@@ -43,7 +43,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="1">
 			<td id='desc'>Start / rooting (3-5 days)<br>Wetten the substrate</td>
-			<td>~1</td>
+			<td id="dps"><span class="dps" id="0"></span>~1w</td>
 			<td>18</td>
 			<td>1.8</td>
 			<td>-</td>
@@ -57,7 +57,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="2">
 			<td id='desc'>Vegetative Phase I<br>Plant developse in Volume</td>
-			<td>1-3</td>
+			<td id="dps"><span class="dps" id="1"></span>1-3w</td>
 			<td>18</td>
 			<td>2.2</td>
 			<td>-</td>
@@ -71,7 +71,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="3">
 			<td id='desc'>Vegetative phase II<br>Up to growth stagnation<br>start of fructification<br>or blooming</td>
-			<td>2-4</td>
+			<td id="dps"><span class="dps" id="2"></span>2-4w</td>
 			<td>12</td>
 			<td>2.8</td>
 			<td>-</td>
@@ -87,7 +87,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="4">
 			<td id='desc'>Generative period I<br>Flowers or fuits develope in<br>size. Growth in height achieved</td>
-			<td>2-3</td>
+			<td id="dps"><span class="dps" id="3"></span>2-3w</td>
 			<td>12</td>
 			<td>-</td>
 			<td>3.4</td>
@@ -101,7 +101,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="5">
 			<td id='desc'>Generative period II<br>Develope mass (weight) of<br>flowers or fruits</td>
-			<td>1</td>
+			<td id="dps"><span class="dps" id="4"></span>1w</td>
 			<td>12</td>
 			<td>-</td>
 			<td>3.4</td>
@@ -115,7 +115,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="6">
 			<td id='desc'>Generative period III<br>Develope mass (weight) of<br>flowers or fruits</td>
-			<td>2-3</td>
+			<td id="dps"><span class="dps" id="5"></span>2-3w</td>
 			<td>12</td>
 			<td>-</td>
 			<td>2.5</td>
@@ -129,7 +129,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="7">
 			<td id='desc'>Generative period IV<br>Flower or fruit ripening process</td>
-			<td>1-2</td>
+			<td id="dps"><span class="dps" id="6"></span>1-2w</td>
 			<td>10</td>
 			<td>-</td>
 			<td>-</td>
@@ -232,7 +232,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 			return(`${totalDays} days <span id="resetCycle">${reset}</span>${nutritionScheme()}`);
 		} else {
 			if(!days) {
-				return(`${totalDays} days or ${weeks} weeks <span id="resetCycle">${reset}</span>${nutritionScheme}()`);
+				return(`${totalDays} days or ${weeks} weeks <span id="resetCycle">${reset}</span>${nutritionScheme()}`);
 			} else {
 				return(`${totalDays} days or ${weeks} weeks and ${days} days <span id="resetCycle">${reset}</span>${nutritionScheme()}`);
 			}
@@ -319,6 +319,15 @@ document.addEventListener("DOMContentLoaded", function(e) {
 						tr.style.background = 'none';
 					}
 				});
+
+				document.querySelectorAll("span[class='dps']").forEach((dps) => {
+					if(json.daysPerStep[dps.id] > 0) {
+						var weeks = Math.floor(json.daysPerStep[dps.id] / 7);
+						var days = json.daysPerStep[dps.id] % 7;
+						dps.innerHTML = `${weeks}w${days}d<br>`;
+					}
+				});
+				
 				document.querySelectorAll("input[id='liter']").forEach((input) => {
 					input.addEventListener('change', literChanged);
 				});
