@@ -28,6 +28,9 @@ table {
 th {
 	vertical-align: bottom;
 }
+th.tcol, td.tcol {
+	background-color: rgb(41, 41, 41);
+}
 tr {
 	border-bottom-style: solid;
 	border-bottom-width: 2px;

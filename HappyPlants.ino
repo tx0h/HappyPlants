@@ -1,7 +1,4 @@
 #include <Arduino.h>
-
-//#include <dhtnew.h>
-#include <DHTSensor.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <Update.h>
@@ -13,17 +10,34 @@
 #include <time.h>
 
 
-// temperature/humidity sensor pin, vars
-#define DHT22_PIN 5
-//DHTNEW DHT(5);
-DHTSensor sensor(5);
-struct {
+#define DEBUG 1
+
+struct environment {
 	float temperature;
 	float humidity;
-} DHT;
-int bufcnt;
-float temperature_buf[20];
-float humidity_buf[20];
+	float temperature_buf[20];
+	float humidity_buf[20];
+	int bufcnt;
+} environment;
+
+// temperature/humidity sensor pin, vars
+#undef USE_DHT
+#ifdef USE_DHT
+
+#include <DHTSensor.h>
+#define DHT22_PIN 5
+DHTSensor sensor(5);
+
+#endif
+
+
+#define USE_BME280
+#ifdef USE_BME280
+
+#include <Bme280BoschWrapper.h>
+Bme280BoschWrapper bme280(true);
+
+#endif
 
 #define LIGHTSENSOR_PIN 36
 unsigned int lightsensor;
@@ -45,7 +59,6 @@ struct cycle {
 	int daysPerStep[7];
 } cycle;
 
-//cycle.daysPerStep = {0, 0, 0, 0, 0, 0, 0};
 
 // light relay pin & state
 #define LIGHTRELAY_PIN 19
@@ -74,7 +87,7 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
 
-// time management, the time comes over an ntp server
+// time management, the time comes from an ntp server
 #define NTP_SERVER "de.pool.ntp.org"
 #define TZ_INFO "WEST-1DWEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00"
 struct tm local;
@@ -90,7 +103,9 @@ int rebootNow = 0;
 
 
 void saveCycleData() {
+#ifdef DEBUG
 	Serial.printf("WRITE: cycleStart: %d, liter: %d, schemeStep: %d\n",cycle.cycleStart, cycle.liter, cycle.schemeStep);
+#endif
 	File f = SPIFFS.open("/cycledata.dat", FILE_WRITE);
 	f.write((byte *)&cycle, sizeof(struct cycle));
 	f.close();
@@ -105,7 +120,9 @@ int getCycleLength() {
 		File f = SPIFFS.open("/cycledata.dat", FILE_READ);
 		f.read((byte *)&cycle, sizeof(struct cycle));
 		f.close();
+#ifdef DEBUG
 		Serial.printf("LOADED: cycleStart: %d, liter: %f, schemeStep: %d\n",cycle.cycleStart, cycle.liter, cycle.schemeStep);
+#endif
 	} else {
 		cycle.cycleStart = now;
 		cycle.totalDays = 0;
@@ -128,31 +145,18 @@ int getCycleLength() {
 	} else {
 		cycle.totalDays = tm_diff->tm_yday;
 	}
-/*
-    cycle.weeks = tm_diff->tm_yday / 7;
-    cycle.days = cycle.weeks - ((cycle.weeks / 7) * 7);
 
-
-	if(!cycle.weeks) {
-		sprintf(ret, "%d days", cycle.totalDays);
-	} else {
-		if(!cycle.days) {
-			sprintf(ret, "%d days or %d weeks", cycle.totalDays, cycle.weeks);
-		} else {
-			sprintf(ret, "%d days or %d weeks and %d days", cycle.totalDays, cycle.weeks, cycle.days);
-		}
-	}
-*/
 	return(cycle.totalDays);
 }
 
 void updateLedState() {
+#ifdef DEBUG
 	Serial.println("notify clients");
+#endif
 	DynamicJsonDocument val(256);
 	val["type"] = "toggle";
 	val["state"] = ledState;
 	digitalWrite(LED_PIN, ledState);
-//	digitalWrite(PUMPRELAY_PIN, pumpstate = !pumpstate);
 	digitalWrite(LIGHTRELAY_PIN, lightstate = !lightstate);
 	String output;
 	serializeJson(val, output);
@@ -165,8 +169,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 
 		StaticJsonDocument<256> json;
 		data[len] = 0;
-
+#if defined(DEBUG) && (DEBUG > 1)
 		Serial.printf("some websocket message: >>%s<<\n", data);
+#endif
 		DeserializationError error = deserializeJson(json, data);
 		if(error) {
 			Serial.printf("not really json: %s\n", data);
@@ -175,7 +180,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 				ESP.restart();
 			}
 		} else {
+#if defined(DEBUG) && (DEBUG > 1)
 			Serial.printf("json handler: %s\n", data);
+#endif
 			if(!strcmp(json["type"], "toggle")) {
 				ledState = !ledState;
 				updateLedState();
@@ -204,15 +211,23 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
              void *arg, uint8_t *data, size_t len) {
+
+#if defined(DEBUG) && (DEBUG > 1)
 	Serial.println("on event");
+#endif
+
 	switch (type) {
 		case WS_EVT_CONNECT:
 			updateScheme_ws();
+#if defined(DEBUG) && (DEBUG > 1)
 			Serial.printf("WebSocket client #%u connected from %s\n",
 				client->id(), client->remoteIP().toString().c_str());
+#endif
 			break;
 		case WS_EVT_DISCONNECT:
+#if defined(DEBUG) && (DEBUG > 1)
 			Serial.printf("WebSocket client #%u disconnected\n", client->id());
+#endif
 			break;
 		case WS_EVT_DATA:
 			handleWebSocketMessage(arg, data, len);
@@ -281,7 +296,7 @@ void handleRoot(AsyncWebServerRequest *request) {
 			<br>
 			<br>
 			<span id="elem">temperature: <span id="temperature">%4.2f</span><br>
-			<canvas class="chart" id="mycanvas" width="400" height="100"></canvas>
+			<canvas class="chart" id="mycanvas1" width="400" height="100"></canvas>
 			</span>
 
 			<br>
@@ -309,8 +324,8 @@ void handleRoot(AsyncWebServerRequest *request) {
 		lightstate ? "<u>ON</u>" : "OFF",
 		lightControl.startTime_s,
 		lightControl.duration_s,
-		DHT.temperature,
-		DHT.humidity,
+		environment.temperature,
+		environment.humidity,
 		getCycleLength(),
 		pumpControl.interval,
 		pumpControl.duration
@@ -375,12 +390,16 @@ void handlePumpRelay(AsyncWebServerRequest *request) {
 			snprintf(message, 30, "bla blubb");
 			if(request->hasParam("interval", true)) {
 				pumpControl.interval = (long)(request->getParam("interval", true)->value()).toInt();
+#if defined(DEBUG) && (DEBUG > 1)
 				Serial.printf(">%d< %d\n", pumpControl.interval, pumpControl.duration);
+#endif
 				request->send(200, "text/plain", message);
 			}
 			if(request->hasParam("duration", true)) {
 				pumpControl.duration = (long)(request->getParam("duration", true)->value()).toInt();
+#if defined(DEBUG) && (DEBUG > 1)
 				Serial.printf("%d >%d<\n", pumpControl.interval, pumpControl.duration);
+#endif
 				request->send(200, "text/plain", message);
 			}
 			updatePumpControl();
@@ -431,17 +450,21 @@ void handleLightRelay(AsyncWebServerRequest *request) {
 			request->send(200, "text/plain", message);
 			break;
 		case HTTP_POST:
-			snprintf(message, 30, "bla blubb");
+			snprintf(message, 30, "OK");
 			if(request->hasParam("startTime", true)) {
-				Serial.print(request->getParam("startTime", true)->value().toInt());
 				lightControl.startTime_l = (long)request->getParam("startTime", true)->value().toInt() / 1000;
-				// Serial.printf("%d %s\n", lightControl.startTime_l, timeToString(lightControl.startTime_l));
+#if defined(DEBUG) && (DEBUG > 1)
+				Serial.print(request->getParam("startTime", true)->value().toInt());
+				Serial.printf("%d %s\n", lightControl.startTime_l, timeToString(lightControl.startTime_l));
+#endif
 				request->send(200, "text/plain", message);
 			}
 			if(request->hasParam("duration", true)) {
-				Serial.print(request->getParam("duration", true)->value().toInt());
 				lightControl.duration_l = (long)request->getParam("duration", true)->value().toInt() / 1000;
-				// Serial.printf("%d %s\n", lightControl.duration_l, timeToString(lightControl.duration_l));
+#if defined(DEBUG) && (DEBUG > 1)
+				Serial.print(request->getParam("duration", true)->value().toInt());
+				Serial.printf("%d %s\n", lightControl.duration_l, timeToString(lightControl.duration_l));
+#endif
 				request->send(200, "text/plain", message);
 			}
 			updateLightControl();
@@ -457,7 +480,7 @@ void handleTemperature1(AsyncWebServerRequest *request) {
 	char message[30];
 	switch(request->method()) {
 		case HTTP_GET:
-			snprintf(message, 30, "%5.2f", DHT.temperature);
+			snprintf(message, 30, "%5.2f", environment.temperature);
 			request->send(200, "text/plain", message);
 			break;
 		default:
@@ -471,7 +494,7 @@ void handleHumidity(AsyncWebServerRequest *request) {
 	char message[30];
 	switch(request->method()) {
 		case HTTP_GET:
-			snprintf(message, 30, "%5.2f", DHT.humidity);
+			snprintf(message, 30, "%5.2f", environment.humidity);
 			request->send(200, "text/plain", message);
 			break;
 		default:
@@ -560,8 +583,8 @@ void update_ws() {
 	val["type"] = "update";
 	val["timedate"] = timestr;
 	val["wifiSignal"] = wifiSignal;
-	val["humidity"] = DHT.humidity;
-	val["temperature"] = DHT.temperature;
+	val["humidity"] = environment.humidity;
+	val["temperature"] = environment.temperature;
 	val["pumpstate"] = pumpstate;
 	val["lightstate"] = lightstate;
 	val["lightsensor"] = lightsensor;
@@ -589,7 +612,7 @@ void handleNotFound(AsyncWebServerRequest *request) {
 		request->send(SPIFFS, request->url(), "application/x-binary");
 	} else {
 		request->send(404, "text/plain", message);
-		Serial.println("404 --> "+message);
+		Serial.println("404 --> "+message+", "+request->url());
 	}
 	digitalWrite(LED_PIN, ledState = 0);
 }
@@ -603,14 +626,13 @@ void startSPIFFS() {
 	}
 
     // Get all information of SPIFFS
-	//SPIFFS.format();
-    //SPIFFS.remove("/happyPlants.js");
-    //SPIFFS.remove("/happyPlants.css");
 	unsigned int total = SPIFFS.totalBytes();
 	unsigned int used = SPIFFS.usedBytes();
 
+#ifdef DEBUG
 	Serial.println("===== File system info =====");
 	Serial.printf("total space: %d byte; used space: %d bytes\n", total, used);
+#endif
 
 //	SPIFFS.remove("/wificred.dat");
 	if(SPIFFS.exists("/wificred.dat")) {
@@ -629,7 +651,9 @@ void startSPIFFS() {
 		File f = SPIFFS.open("/lightctrl.dat", FILE_READ);
 		f.read((byte *)&lightControl, sizeof(lightControl));
 		f.close();
+#ifdef DEBUG
 		Serial.printf("start light: %s\nlight duration: %s\n", lightControl.startTime_s, lightControl.duration_s);
+#endif
 	} else {
 		lightControl.startTime_l = 3600 * 6;
 		lightControl.duration_l = 3600 * 18;
@@ -640,7 +664,9 @@ void startSPIFFS() {
 		File f = SPIFFS.open("/pumpctrl.dat", FILE_READ);
 		f.read((byte *)&pumpControl, sizeof(pumpControl));
 		f.close();
+#ifdef DEBUG
 		Serial.printf("pump interval: %d\npump duration: %d\n", pumpControl.interval, pumpControl.duration);
+#endif
 	} else {
 		pumpControl.interval = 15;
 		pumpControl.duration = 5;
@@ -665,8 +691,10 @@ void startWebServer() {
 	server.on("/happyPlants.css", HTTP_GET, [](AsyncWebServerRequest *request) {
 		request->send(SPIFFS, "/happyPlants.css", "text/css");
 	});
+	server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
+		request->send(SPIFFS, "/favicon.svg", "image/svg+xml");
+	});
 	server.on("/favicon.svg", HTTP_GET, [](AsyncWebServerRequest *request) {
-Serial.println("send favicon.svg, wth!");
 		request->send(SPIFFS, "/favicon.svg", "image/svg+xml");
 	});
 	server.on("/inline", [](AsyncWebServerRequest *request) {
@@ -719,15 +747,35 @@ void startWiFi() {
 
 void setup() {
 
-//	DHT.read();
+	Serial.begin(115200);
+	Serial.println("*** OK.");
+#ifdef DEBUG
+	Serial.printf("sketch size:%d\nsketch md5sum: %s\nfree sketch space: %d\n",
+		ESP.getSketchSize(), ESP.getSketchMD5(), ESP.getFreeSketchSpace());
+#endif
+
+#ifdef USE_DHT
 	DHTSensorMeasurement re = sensor.Read();
-	DHT.temperature = re.TemperatureInCelsius();
-	DHT.humidity = re.Humidity();
-	bufcnt=0;
-	for(int i=0; i<=19; i++) {
-		temperature_buf[i] = DHT.temperature;
-		humidity_buf[i] = DHT.humidity;
+	environment.temperature = re.TemperatureInCelsius();
+	environment.humidity = re.Humidity();
+#endif
+
+#ifdef USE_BME280
+	while(!bme280.beginI2C(0x76)) {
+		Serial.println("Cannot find sensor.");
+		delay(1000);
 	}
+	bme280.measure();
+	environment.temperature = bme280.getTemperature() / 100.0;
+	environment.humidity = bme280.getHumidity() / 1024.0;
+#endif
+
+	environment.bufcnt = 0;
+	for(int i=0; i<=19; i++) {
+		environment.temperature_buf[i] = environment.temperature;
+		environment.humidity_buf[i] = environment.humidity;
+	}
+
 	pinMode(LED_PIN, OUTPUT);
 	digitalWrite(LED_PIN, ledState = 0);
 
@@ -739,34 +787,28 @@ void setup() {
 	digitalWrite(LIGHTRELAY_PIN, HIGH);
 	delay(100);
 
-
-	Serial.begin(115200);
-	Serial.println("*** OK.");
-	Serial.printf("sketch size:%d\nsketch md5sum: %s\nfree sketch space: %d\n", ESP.getSketchSize(), ESP.getSketchMD5(), ESP.getFreeSketchSpace());
-//	Serial.println(DHT_LIB_VERSION);
-
-	delay(500);
-
-
 	Serial.println("Start SPIFFS");
 	startSPIFFS();
 	delay(200);
+
 	Serial.println("Start WiFi");
 	startWiFi();
 	delay(200);
+
 	Serial.println("Start WebServer");
 	startWebServer();
 	delay(200);
+
 	Serial.println("Start WebSocket");
 	startWebSocket();
 	delay(200);
 
+	// should the light be on or off?
 	if((local.tm_hour * 3600 + local.tm_min * 60) > lightControl.startTime_l
 	&& (local.tm_hour * 3600 + local.tm_min * 60) < lightControl.startTime_l + lightControl.duration_l) {
 		lightstate = 1;
 		digitalWrite(LIGHTRELAY_PIN, !lightstate);
 	}
-
 }
 
 int lastpump = -1;
@@ -799,10 +841,11 @@ void loop() {
 			Serial.println("stop pump");
 			digitalWrite(PUMPRELAY_PIN, !pumpstate);
 		}
-		/*
+
+#if defined(DEBUG) && (DEBUG > 1)
 		Serial.printf("min %d, last: %d, interval: %d, duration: %d\n", tm.tm_min,
 		lastpump, pumpControl.interval, pumpControl.duration);
-		*/
+#endif
 
 		if(now == lightControl.startTime_l
 		&& micros() != lastlight) {
@@ -810,7 +853,9 @@ void loop() {
 			lightstate = 1;
 			Serial.println("start light");
 			digitalWrite(LIGHTRELAY_PIN, !lightstate);
-//			Serial.printf("now: %d, startTime: %d, lightstate: %d\n", now, lightControl.startTime_l, lightstate);
+#if defined(DEBUG) && (DEBUG > 1)
+			Serial.printf("now: %d, startTime: %d, lightstate: %d\n", now, lightControl.startTime_l, lightstate);
+#endif
 		}
 
 //Serial.printf("now: %d, startTime %d duration %d\n", now, lightControl.startTime_l, lightControl.duration_l);
@@ -825,10 +870,10 @@ void loop() {
 			digitalWrite(LIGHTRELAY_PIN, !lightstate);
 		}
 
-		/*
+#if defined(DEBUG) && (DEBUG > 1)
 		Serial.printf("free heap: %5.2f\nmin free heap: %5.2f\nget heap size: %5.2f\nget max alloc heap: %5.2f\n\n",
 		ESP.getFreeHeap()/1024.0, ESP.getMinFreeHeap()/1024.0, ESP.getHeapSize()/1024.0, ESP.getMaxAllocHeap()/1024.0);
-		*/
+#endif
 	}
 
 	// every second second, read sensors, inform the clients
@@ -840,50 +885,46 @@ void loop() {
 		if(tm.tm_sec != lastsec) {
 			lightsensor = analogRead(LIGHTSENSOR_PIN);
 		}
-RETRY:
-		//int chk = DHT.read22(DHT22_PIN);
-//		int chk = DHT.read();
+
+#ifdef USE_DHT
 		DHTSensorMeasurement re = sensor.Read();
-		DHT.temperature = re.TemperatureInCelsius();
-		DHT.humidity = re.Humidity();
-		float temperature = 0;
-		float humidity = 0;
-		/*
-		switch (chk) {
-			case DHTLIB_OK:
-				//Serial.print("OK,\t");
-				if(DHT.humidity > 1000 && --retry)
-					goto RETRY;
-				break;
-			case DHTLIB_ERROR_CHECKSUM:
-				if(--retry)
-					goto RETRY;
-				break;
-			case DHTLIB_ERROR_TIMEOUT:
-				if(--retry)
-					goto RETRY;
-				break;
-			default:
-				if(--retry)
-					goto RETRY;
-				break;
-		}
-		*/
-		temperature_buf[bufcnt] = DHT.temperature;
-		humidity_buf[bufcnt] = DHT.humidity;
-		if(++bufcnt >= 20) {
-			bufcnt = 0;
+		environment.temperature = re.TemperatureInCelsius();
+		environment.humidity = re.Humidity();
+#if defined(DEBUG) && (DEBUG > 1)
+		Serial.printf("dht temperature: %.2f and humidity: %.2f\n",
+		environment.temperature, environment.humidity);
+#endif
+#endif
+
+#ifdef USE_BME280
+		bme280.measure();
+		environment.temperature = bme280.getTemperature() / 100.0;
+		environment.humidity = bme280.getHumidity() / 1024.0;
+#if defined(DEBUG) && (DEBUG > 1)
+		Serial.printf("bme280 temperature: %.2f, humidity: %.2f and preasure: %.2f\n",
+		environment.temperature, environment.humidity, bme280.getPressure()/100.0);
+#endif
+#endif
+
+		environment.temperature_buf[environment.bufcnt] = environment.temperature;
+		environment.humidity_buf[environment.bufcnt] = environment.humidity;
+		if(++environment.bufcnt >= 20) {
+			environment.bufcnt = 0;
 		}
 		for(int i = 0; i <= 19; i++) {
-			temperature += temperature_buf[i];
-			humidity += humidity_buf[i];
+			environment.temperature += environment.temperature_buf[i];
+			environment.humidity += environment.humidity_buf[i];
 		}
-		DHT.temperature = temperature / 20;
-		DHT.humidity = humidity / 20;
+		environment.temperature /= 20;
+		environment.humidity /= 20;
 
-		//Serial.printf("Memory: %.2f/%.2f\n", ESP.getFreeHeap() / 1024.0, ESP.getHeapSize() / 1024.0);
-		// update the websocket clients
+#if defined(DEBUG) && (DEBUG > 1)
+		Serial.printf("Memory: %.2f/%.2f\n", ESP.getFreeHeap() / 1024.0, ESP.getHeapSize() / 1024.0);
+#endif
+
 		lastsec = tm.tm_sec;
+
+		// update the websocket clients
 		update_ws();
 	}
 

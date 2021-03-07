@@ -1,19 +1,21 @@
 document.addEventListener("DOMContentLoaded", function(e) {
 
 	var liter = 1;
-	var smoothie = new SmoothieChart({
+
+	var smoothie1 = new SmoothieChart({
 	    millisPerPixel: 2000,
 		grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
 	});
+	smoothie1.streamTo(document.getElementById("mycanvas1"));
+	var line1 = new TimeSeries();
+	smoothie1.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:1});
+
 	var smoothie2 = new SmoothieChart({
 		millisPerPixel: 2000,
 		grid: {fillStyle: '#222', strokeStyle: '#444',millisPerLine:80000,verticalSections:5},
 	});
-	smoothie.streamTo(document.getElementById("mycanvas"));
 	smoothie2.streamTo(document.getElementById("mycanvas2"));
-	var line1 = new TimeSeries();
 	var line2 = new TimeSeries();
-	smoothie.addTimeSeries(line1, { strokeStyle:'rgb(0, 255, 0)' , lineWidth:1});
 	smoothie2.addTimeSeries(line2, { strokeStyle:'rgb(255, 0, 255)' , lineWidth:1});
 
 	
@@ -24,12 +26,12 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		return(`
 		<br>
 		<br>
-		Nutrition scheme for <input type="text" value="${liter}" size="3" id="liter"> liter:
+		Nutrition scheme in ml per <input type="text" value="${liter}" size="3" id="liter"> liter:
 		<br>
 		<table id="table">
 		<tr>
 			<th>Description</th>
-			<th>Weeks</span>
+			<th class="tcol">Weeks</span>
 			<th>Light<br>hours</th>
 			<th>Aqua<br>Vega<br>A & B</th>
 			<th>Aqua<br>Flores<br>A & B</th>
@@ -43,7 +45,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="1">
 			<td id='desc'>Start / rooting (3-5 days)<br>Wetten the substrate</td>
-			<td id="dps"><span class="dps" id="0"></span>~1w</td>
+			<td class="tcol" id="dps"><span class="dps" id="0"></span>~1w</td>
 			<td>18</td>
 			<td>1.8</td>
 			<td>-</td>
@@ -57,7 +59,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="2">
 			<td id='desc'>Vegetative Phase I<br>Plant developse in Volume</td>
-			<td id="dps"><span class="dps" id="1"></span>1-3w</td>
+			<td class="tcol" id="dps"><span class="dps" id="1"></span>1-3w</td>
 			<td>18</td>
 			<td>2.2</td>
 			<td>-</td>
@@ -71,7 +73,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="3">
 			<td id='desc'>Vegetative phase II<br>Up to growth stagnation<br>start of fructification<br>or blooming</td>
-			<td id="dps"><span class="dps" id="2"></span>2-4w</td>
+			<td class="tcol" id="dps"><span class="dps" id="2"></span>2-4w</td>
 			<td>12</td>
 			<td>2.8</td>
 			<td>-</td>
@@ -87,7 +89,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="4">
 			<td id='desc'>Generative period I<br>Flowers or fuits develope in<br>size. Growth in height achieved</td>
-			<td id="dps"><span class="dps" id="3"></span>2-3w</td>
+			<td class="tcol" id="dps"><span class="dps" id="3"></span>2-3w</td>
 			<td>12</td>
 			<td>-</td>
 			<td>3.4</td>
@@ -101,7 +103,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="5">
 			<td id='desc'>Generative period II<br>Develope mass (weight) of<br>flowers or fruits</td>
-			<td id="dps"><span class="dps" id="4"></span>1w</td>
+			<td class="tcol" id="dps"><span class="dps" id="4"></span>1w</td>
 			<td>12</td>
 			<td>-</td>
 			<td>3.4</td>
@@ -115,7 +117,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="6">
 			<td id='desc'>Generative period III<br>Develope mass (weight) of<br>flowers or fruits</td>
-			<td id="dps"><span class="dps" id="5"></span>2-3w</td>
+			<td class="tcol" id="dps"><span class="dps" id="5"></span>2-3w</td>
 			<td>12</td>
 			<td>-</td>
 			<td>2.5</td>
@@ -129,7 +131,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 		<tr class="schemerow" id="7">
 			<td id='desc'>Generative period IV<br>Flower or fruit ripening process</td>
-			<td id="dps"><span class="dps" id="6"></span>1-2w</td>
+			<td class="tcol" id="dps"><span class="dps" id="6"></span>1-2w</td>
 			<td>10</td>
 			<td>-</td>
 			<td>-</td>
@@ -176,6 +178,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		}
 		input.addEventListener('change', pumpInterval);
 	});
+
 	document.querySelectorAll("input[name='duration']").forEach((input) => {
 		if(input.value == externalPumpDuration) {
 			input.checked = true;
