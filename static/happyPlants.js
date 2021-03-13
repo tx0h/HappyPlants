@@ -318,6 +318,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 					}
 					if(tr.id == json.schemeStep) {
 						tr.style.background = '#333';
+						tr.children[1].firstChild.style.color = '#f80';
 					} else {
 						tr.style.background = 'none';
 					}
